@@ -32,6 +32,8 @@ export type Candidate = {
   // 공식 단지 정보(K-apt)에서 가져왔다면 그 출처와 가져온 시점의 값. 직접 고쳤는지 비교하는 데 쓴다.
   info: ComplexSource | null;
   notes: Note[];
+  // 카드를 접어 둔 상태. 없으면 펼친 것이다.
+  collapsed?: boolean;
 };
 
 export type ComplexSource = {

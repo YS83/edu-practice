@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { AlertCircleIcon, PlusIcon, SearchIcon, Trash2Icon } from "lucide-react";
+import {
+  AlertCircleIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  PlusIcon,
+  SearchIcon,
+  Trash2Icon,
+} from "lucide-react";
 
 import { formatMan } from "@/components/affordability/format";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -10,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardHeader,
@@ -361,6 +369,32 @@ function TrackerBody({
             </CardContent>
           </Card>
 
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-heading text-lg font-semibold">후보지 {candidates.length}곳</h2>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setCandidates((current) => current.map((item) => ({ ...item, collapsed: true })))
+                }
+              >
+                모두 접기
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setCandidates((current) => current.map((item) => ({ ...item, collapsed: false })))
+                }
+              >
+                모두 펼치기
+              </Button>
+            </div>
+          </div>
+
           {evaluations.map(({ candidate, priced, result, recommendation }) => (
             <CandidateCard
               key={candidate.id}
@@ -657,6 +691,7 @@ function CandidateCard({
   const [editing, setEditing] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const gap = listingGap(candidate);
+  const collapsed = candidate.collapsed === true;
   const idPrefix = `c-${candidate.id}`;
 
   function addNote() {
@@ -677,7 +712,65 @@ function CandidateCard({
           서울 {districtName(candidate.district)}
           {candidate.dong ? ` ${candidate.dong}` : ""}
         </CardDescription>
+        <CardAction className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-expanded={!collapsed}
+            onClick={() => onChange({ collapsed: !collapsed })}
+          >
+            {collapsed ? (
+              <ChevronDownIcon data-icon="inline-start" />
+            ) : (
+              <ChevronUpIcon data-icon="inline-start" />
+            )}
+            {collapsed ? "펼치기" : "접기"}
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setConfirming(true)}>
+            <Trash2Icon data-icon="inline-start" />
+            후보지 삭제
+          </Button>
+        </CardAction>
       </CardHeader>
+      {confirming ? (
+        <CardContent>
+          <Alert variant="destructive">
+            <AlertCircleIcon />
+            <AlertTitle>이 후보지를 삭제할까요?</AlertTitle>
+            <AlertDescription>
+              <p>임장기 {candidate.notes.length}건도 함께 사라지고 되돌릴 수 없습니다.</p>
+              <div className="mt-3 flex gap-2">
+                <Button type="button" size="sm" variant="destructive" onClick={onDelete}>
+                  삭제
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setConfirming(false)}>
+                  취소
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      ) : null}
+      {collapsed ? (
+        <CardContent>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            {priced ? (
+              <span>
+                {priced.basis === "listing" ? "호가" : "최근 실거래가"} {formatMan(priced.price)}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">가격 정보 없음</span>
+            )}
+            {result?.status === "ok" ? (
+              <Badge variant={result.affordable ? "default" : "destructive"}>
+                {result.affordable ? "가능" : "부족"}
+              </Badge>
+            ) : null}
+            {recommendation ? <OpinionBadge opinion={recommendation.opinion} /> : null}
+          </div>
+        </CardContent>
+      ) : (
       <CardContent className="flex flex-col gap-6">
         <FieldGroup>
           <ComplexInfoPanel candidate={candidate} onChange={onChange} />
@@ -886,31 +979,8 @@ function CandidateCard({
           )}
         </div>
 
-        <div className="border-t pt-4">
-          {confirming ? (
-            <Alert variant="destructive">
-              <AlertCircleIcon />
-              <AlertTitle>이 후보지를 삭제할까요?</AlertTitle>
-              <AlertDescription>
-                <p>임장기 {candidate.notes.length}건도 함께 사라지고 되돌릴 수 없습니다.</p>
-                <div className="mt-3 flex gap-2">
-                  <Button type="button" size="sm" variant="destructive" onClick={onDelete}>
-                    삭제
-                  </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => setConfirming(false)}>
-                    취소
-                  </Button>
-                </div>
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <Button type="button" variant="outline" onClick={() => setConfirming(true)}>
-              <Trash2Icon data-icon="inline-start" />
-              후보지 삭제
-            </Button>
-          )}
-        </div>
       </CardContent>
+      )}
     </Card>
   );
 }

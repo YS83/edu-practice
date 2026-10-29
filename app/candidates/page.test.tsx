@@ -517,3 +517,103 @@ test("위치 정보를 가져온 뒤에만 지도 영역이 나타나고 카카�
   // 좌표는 저장하지 않는다.
   expect(JSON.stringify({ ...window.localStorage })).not.toContain("37.5");
 });
+
+// 후보지를 직접 저장소에 넣어 둔다. 현금 7억이라 9억 5천만원 집을 살 수 있다.
+function seedCandidates(names: string[]) {
+  saveRichAffordability();
+  window.localStorage.setItem(
+    CANDIDATES_KEY,
+    JSON.stringify(
+      names.map((complex, index) => ({
+        id: `seed-${index}`,
+        district: "11650",
+        complex,
+        dong: "",
+        area: 85,
+        market: { price: 95000, date: null, min: null, max: null, count: 0, fetchedAt: null, source: "manual" },
+        listing: "",
+        households: "",
+        builtYear: "",
+        parkingGround: "",
+        parkingUnderground: "",
+        info: null,
+        notes: [{ id: `n-${index}`, date: "2026-10-29", text: `${complex} 임장 메모` }],
+      }))
+    )
+  );
+}
+
+test("후보지 카드를 접으면 머리글과 요약만 남고, 펼치면 입력과 임장기가 다시 보인다", async () => {
+  seedCandidates(["반포자이"]);
+  render(<CandidatesPage />);
+  expect(await screen.findByLabelText(/^호가/)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "접기" }));
+
+  expect(screen.queryByLabelText(/^호가/)).not.toBeInTheDocument();
+  expect(screen.queryByText("반포자이 임장 메모")).not.toBeInTheDocument();
+  // 머리글에는 단지명, 요약(가격 기준과 구매력 판정, 의견), 삭제가 남는다.
+  expect(screen.getByText("반포자이 · 85㎡")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /후보지 삭제/ })).toBeInTheDocument();
+  const toggle = screen.getByRole("button", { name: "펼치기" });
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(screen.getByText(/최근 실거래가 9억 5,000만 원/)).toBeInTheDocument();
+
+  fireEvent.click(toggle);
+
+  expect(screen.getByLabelText(/^호가/)).toBeInTheDocument();
+  expect(screen.getByText("반포자이 임장 메모")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "접기" })).toHaveAttribute("aria-expanded", "true");
+});
+
+test("접은 상태는 다시 열어도 유지된다", async () => {
+  seedCandidates(["반포자이"]);
+  const first = render(<CandidatesPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "접기" }));
+  first.unmount();
+
+  render(<CandidatesPage />);
+
+  expect(await screen.findByRole("button", { name: "펼치기" })).toBeInTheDocument();
+  expect(screen.queryByLabelText(/^호가/)).not.toBeInTheDocument();
+});
+
+test("모두 접기와 모두 펼치기로 후보지 카드를 한꺼번에 접고 편다", async () => {
+  seedCandidates(["반포자이", "래미안퍼스티지"]);
+  render(<CandidatesPage />);
+  expect(await screen.findAllByLabelText(/^호가/)).toHaveLength(2);
+
+  fireEvent.click(screen.getByRole("button", { name: "모두 접기" }));
+  expect(screen.queryAllByLabelText(/^호가/)).toHaveLength(0);
+  expect(screen.getAllByRole("button", { name: "펼치기" })).toHaveLength(2);
+
+  fireEvent.click(screen.getByRole("button", { name: "모두 펼치기" }));
+  expect(screen.getAllByLabelText(/^호가/)).toHaveLength(2);
+});
+
+test("접은 카드에서도 머리글의 삭제 버튼으로 후보지를 지울 수 있고, 임장기가 함께 사라진다고 알려 준다", async () => {
+  seedCandidates(["반포자이", "래미안퍼스티지"]);
+  render(<CandidatesPage />);
+  fireEvent.click((await screen.findAllByRole("button", { name: "접기" }))[0]);
+
+  fireEvent.click(screen.getAllByRole("button", { name: /후보지 삭제/ })[0]);
+
+  expect(screen.getByText("이 후보지를 삭제할까요?")).toBeInTheDocument();
+  expect(screen.getByText(/임장기 1건도 함께 사라지고/)).toBeInTheDocument();
+  const confirmation = screen.getByText("이 후보지를 삭제할까요?").closest("[role=alert]") as HTMLElement;
+  fireEvent.click(within(confirmation).getByRole("button", { name: "삭제" }));
+
+  await waitFor(() => expect(screen.queryByText("반포자이 · 85㎡")).not.toBeInTheDocument());
+  expect(screen.getByText("래미안퍼스티지 · 85㎡")).toBeInTheDocument();
+});
+
+test("삭제를 확인하는 중에 취소하면 후보지가 그대로 남는다", async () => {
+  seedCandidates(["반포자이"]);
+  render(<CandidatesPage />);
+
+  fireEvent.click(await screen.findByRole("button", { name: /후보지 삭제/ }));
+  fireEvent.click(screen.getByRole("button", { name: "취소" }));
+
+  expect(screen.queryByText("이 후보지를 삭제할까요?")).not.toBeInTheDocument();
+  expect(screen.getByText("반포자이 · 85㎡")).toBeInTheDocument();
+});
