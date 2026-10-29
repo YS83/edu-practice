@@ -75,6 +75,8 @@ import { ComplexInfoPanel } from "./complex-info";
 import { CriteriaCard } from "./criteria-card";
 import { candidateFacts } from "./facts";
 import { LocationPanel } from "./location-panel";
+import { PlacesMap } from "./places-map";
+import type { FoundPlaceEntry } from "./places-map";
 import { OpinionBadge, OpinionPanel } from "./opinion";
 
 const bindingLabels: Record<BindingConstraint, string> = {
@@ -119,6 +121,13 @@ type SearchState =
   | { phase: "loading" }
   | { phase: "done"; trades: Trade[]; fetchedAt: string }
   | { phase: "error"; kind: "missing-key" | "upstream" | "network" | "bad-request" };
+
+// 검색 결과 지도는 보조 정보라 실패해도 등록을 막지 않는다. 좌표는 저장하지 않는다.
+type PlacesState =
+  | { phase: "idle" }
+  | { phase: "loading" }
+  | { phase: "done"; places: FoundPlaceEntry[]; truncated: boolean }
+  | { phase: "error" };
 
 const errorMessages: Record<
   Extract<SearchState, { phase: "error" }>["kind"],
@@ -427,6 +436,31 @@ function RegisterCard({ onAdd }: { onAdd: (candidate: Candidate) => void }) {
   const [search, setSearch] = useState<SearchState>({ phase: "idle" });
   const [manualArea, setManualArea] = useState("");
   const [manualPrice, setManualPrice] = useState("");
+  const [placesState, setPlacesState] = useState<PlacesState>({ phase: "idle" });
+
+  async function loadPlaces(trades: Trade[]) {
+    const names = [...new Set(trades.map((trade) => trade.complex))].sort((a, b) =>
+      a.localeCompare(b)
+    );
+    if (names.length === 0) {
+      setPlacesState({ phase: "idle" });
+      return;
+    }
+    setPlacesState({ phase: "loading" });
+    try {
+      const query = names.map((item) => `name=${encodeURIComponent(item)}`).join("&");
+      const response = await fetch(`/api/places?district=${district}&${query}`);
+      const body = await response.json();
+      // 응답 형식이 예상과 다르면 지도 없이 목록만 쓴다.
+      if (!response.ok || !Array.isArray(body.places)) {
+        setPlacesState({ phase: "error" });
+        return;
+      }
+      setPlacesState({ phase: "done", places: body.places, truncated: body.truncated === true });
+    } catch {
+      setPlacesState({ phase: "error" });
+    }
+  }
 
   async function lookup() {
     if (!name.trim()) {
@@ -434,6 +468,7 @@ function RegisterCard({ onAdd }: { onAdd: (candidate: Candidate) => void }) {
       return;
     }
     setSearch({ phase: "loading" });
+    setPlacesState({ phase: "idle" });
     try {
       const response = await fetch(
         `/api/trades?district=${district}&name=${encodeURIComponent(name.trim())}`
@@ -448,6 +483,7 @@ function RegisterCard({ onAdd }: { onAdd: (candidate: Candidate) => void }) {
         return;
       }
       setSearch({ phase: "done", trades: body.trades, fetchedAt: body.fetchedAt });
+      void loadPlaces(body.trades);
     } catch {
       setSearch({ phase: "error", kind: "network" });
     }
@@ -593,6 +629,18 @@ function RegisterCard({ onAdd }: { onAdd: (candidate: Candidate) => void }) {
                 최근 6개월 신고된 거래에서 단지명을 찾지 못했습니다. 이름을 줄여서 다시 조회하거나, 아래에서 직접 입력해 등록할 수 있습니다.
               </AlertDescription>
             </Alert>
+          ) : null}
+
+          {options.length > 0 && placesState.phase === "loading" ? (
+            <p className="text-sm text-muted-foreground">단지 위치를 찾는 중입니다.</p>
+          ) : null}
+          {options.length > 0 && placesState.phase === "done" ? (
+            <PlacesMap places={placesState.places} truncated={placesState.truncated} />
+          ) : null}
+          {options.length > 0 && placesState.phase === "error" ? (
+            <p className="text-sm text-muted-foreground">
+              단지 위치 지도를 불러오지 못했습니다. 아래 목록으로 등록할 수 있습니다.
+            </p>
           ) : null}
 
           {options.length > 0 && search.phase === "done" ? (

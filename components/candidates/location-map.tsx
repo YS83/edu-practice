@@ -5,31 +5,28 @@ import { ExternalLinkIcon } from "lucide-react";
 
 import type { LocationResult } from "@/lib/location";
 
+import { drawPins } from "./draw-pins";
+import type { MapPin } from "./draw-pins";
 import { loadKakaoMaps } from "./kakao-maps";
 
-type Pin = { kind: string; name: string; distance?: number; lat: number; lng: number };
-
-function pinsOf(location: LocationResult): Pin[] {
+function pinsOf(location: LocationResult): MapPin[] {
   const { place, elementary, middle, station } = location;
-  const pins: Pin[] = [{ kind: "단지", name: place.name, lat: place.lat, lng: place.lng }];
+  const pins: MapPin[] = [{ label: `단지 ${place.name}`, lat: place.lat, lng: place.lng }];
   const nearby: [string, typeof elementary][] = [
     ["초", elementary],
     ["중", middle],
     ["역", station],
   ];
   for (const [kind, facility] of nearby) {
-    if (facility) pins.push({ kind, ...facility });
+    if (facility) {
+      pins.push({
+        label: `${kind} ${facility.name} ${facility.distance}m`,
+        lat: facility.lat,
+        lng: facility.lng,
+      });
+    }
   }
   return pins;
-}
-
-// 이름표는 글자로만 넣어 HTML로 해석되지 않게 한다.
-function labelOf(pin: Pin): HTMLElement {
-  const element = document.createElement("div");
-  element.className =
-    "rounded-md border bg-background px-1.5 py-0.5 text-xs font-medium shadow-sm";
-  element.textContent = `${pin.kind} ${pin.name}${pin.distance === undefined ? "" : ` ${pin.distance}m`}`;
-  return element;
 }
 
 // 지도는 위치 정보를 가져온 뒤에만 그리고, 좌표는 저장하지 않는다.
@@ -45,21 +42,7 @@ export function LocationMap({ location }: { location: LocationResult }) {
     setFailed(false);
     loadKakaoMaps(key)
       .then((maps) => {
-        if (cancelled) return;
-        const pins = pinsOf(location);
-        const [first] = pins;
-        const map = new maps.Map(element, {
-          center: new maps.LatLng(first.lat, first.lng),
-          level: 4,
-        });
-        const bounds = new maps.LatLngBounds();
-        for (const pin of pins) {
-          const position = new maps.LatLng(pin.lat, pin.lng);
-          new maps.Marker({ position, map });
-          new maps.CustomOverlay({ position, content: labelOf(pin), yAnchor: 2.2, map });
-          bounds.extend(position);
-        }
-        if (pins.length > 1) map.setBounds(bounds);
+        if (!cancelled) drawPins(maps, element, pinsOf(location));
       })
       .catch(() => {
         if (!cancelled) setFailed(true);

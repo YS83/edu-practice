@@ -1,7 +1,15 @@
 // 카카오맵 JavaScript SDK를 브라우저에서 한 번만 불러온다. 필요한 부분만 타입으로 적었다.
 
 type LatLng = object;
-type MapInstance = { setBounds(bounds: BoundsInstance): void };
+type MapInstance = {
+  setBounds(
+    bounds: BoundsInstance,
+    paddingTop?: number,
+    paddingRight?: number,
+    paddingBottom?: number,
+    paddingLeft?: number
+  ): void;
+};
 type BoundsInstance = { extend(point: LatLng): void };
 
 export type KakaoMapsApi = {

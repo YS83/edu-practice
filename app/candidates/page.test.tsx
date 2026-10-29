@@ -617,3 +617,91 @@ test("삭제를 확인하는 중에 취소하면 후보지가 그대로 남는�
   expect(screen.queryByText("이 후보지를 삭제할까요?")).not.toBeInTheDocument();
   expect(screen.getByText("반포자이 · 85㎡")).toBeInTheDocument();
 });
+
+// 카카오맵 SDK 대역: 찍힌 핀의 이름표만 기록한다.
+function stubKakaoMap() {
+  const labels: string[] = [];
+  class LatLng {
+    constructor(public lat: number, public lng: number) {}
+  }
+  class Map {
+    setBounds() {}
+  }
+  class Marker {}
+  class CustomOverlay {
+    constructor(options: { content: HTMLElement }) {
+      labels.push(options.content.textContent ?? "");
+    }
+  }
+  class LatLngBounds {
+    extend() {}
+  }
+  window.kakao = {
+    maps: { load: (cb: () => void) => cb(), LatLng, Map, Marker, CustomOverlay, LatLngBounds },
+  } as unknown as typeof window.kakao;
+  return labels;
+}
+
+const placesBody = {
+  places: [
+    {
+      query: "래미안 퍼스티지",
+      place: { name: "래미안퍼스티지아파트", address: "서울 서초구 반포동", lat: 37.5, lng: 127.0 },
+    },
+  ],
+  truncated: false,
+};
+
+test("실거래가를 조회하면 결과에 나온 단지의 위치가 지도에 찍히고, 등록은 그대로 된다", async () => {
+  vi.stubEnv("NEXT_PUBLIC_KAKAO_JS_KEY", "js-key");
+  const labels = stubKakaoMap();
+  saveAffordability();
+  const fetchMock = stubRoutes({
+    "/api/trades": { status: 200, body: tradesBody },
+    "/api/places": { status: 200, body: placesBody },
+  });
+  render(<CandidatesPage />);
+
+  await lookup();
+
+  await waitFor(() => expect(labels).toEqual(["래미안 퍼스티지"]));
+  const placesCall = fetchMock.mock.calls.map(([url]) => String(url)).find((url) => url.startsWith("/api/places"));
+  expect(placesCall).toContain("district=11110");
+  expect(placesCall).toContain(`name=${encodeURIComponent("래미안 퍼스티지")}`);
+  expect(screen.getByRole("img", { name: /검색한 단지 위치 지도/ })).toBeInTheDocument();
+
+  const option = (await screen.findByText(/85㎡/)).closest("li")!;
+  fireEvent.click(within(option).getByRole("button", { name: /후보지로 등록/ }));
+  expect(await screen.findByText(/최근 6개월 28억 원~29억 5,000만 원/)).toBeInTheDocument();
+  vi.unstubAllEnvs();
+  delete window.kakao;
+});
+
+test("단지 위치 조회가 실패해도 결과 목록과 등록은 막히지 않는다", async () => {
+  saveAffordability();
+  stubRoutes({
+    "/api/trades": { status: 200, body: tradesBody },
+    "/api/places": { status: 502, body: { error: "upstream", detail: "HTTP 401" } },
+  });
+  render(<CandidatesPage />);
+
+  await lookup();
+
+  expect(await screen.findByText(/단지 위치 지도를 불러오지 못했습니다/)).toBeInTheDocument();
+  const option = (await screen.findByText(/85㎡/)).closest("li")!;
+  expect(within(option).getByRole("button", { name: /후보지로 등록/ })).toBeEnabled();
+});
+
+test("거래 결과가 없으면 위치 지도를 부르지 않는다", async () => {
+  saveAffordability();
+  const fetchMock = stubRoutes({
+    "/api/trades": { status: 200, body: { trades: [], fetchedAt: "2026-10-29" } },
+    "/api/places": { status: 200, body: placesBody },
+  });
+  render(<CandidatesPage />);
+
+  await lookup("없는단지");
+
+  expect(await screen.findByText("일치하는 거래가 없습니다")).toBeInTheDocument();
+  expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith("/api/places"))).toBe(false);
+});
