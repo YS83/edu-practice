@@ -1,67 +1,18 @@
-import Image from "next/image";
-import { ArrowUpRightIcon, TriangleIcon } from "lucide-react";
-
-import { buttonVariants } from "@/components/ui/button";
+import { AffordabilityEstimator } from "@/components/affordability/estimator";
 
 export default function Home() {
   return (
-    <main className="flex flex-1 flex-col items-center justify-center px-6 py-24">
-      <div className="flex w-full max-w-xl flex-col gap-10">
-        <Image
-          className="h-5 w-[100px] dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col gap-4">
-          <h1 className="font-heading text-3xl font-semibold tracking-tight text-balance">
-            To get started, edit the{" "}
-            <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[0.9em]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="text-lg text-muted-foreground">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-foreground underline underline-offset-4"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-foreground underline underline-offset-4"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <a
-            className={buttonVariants({ size: "lg" })}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <TriangleIcon data-icon="inline-start" />
-            Deploy Now
-          </a>
-          <a
-            className={buttonVariants({ size: "lg", variant: "outline" })}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-            <ArrowUpRightIcon data-icon="inline-end" />
-          </a>
-        </div>
-      </div>
+    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 pt-8 pb-28 sm:px-6 sm:pt-12 lg:pb-12">
+      <header className="flex flex-col gap-2">
+        <h1 className="font-heading text-3xl font-semibold tracking-tight text-balance">
+          서울에서 살 수 있는 가격 계산
+        </h1>
+        <p className="max-w-2xl text-muted-foreground">
+          자산, 소득, 대출 조건을 넣으면 정책 기준을 반영해 살 수 있는 최대 가격과
+          월 상환 부담을 보여줍니다.
+        </p>
+      </header>
+      <AffordabilityEstimator />
     </main>
   );
 }
