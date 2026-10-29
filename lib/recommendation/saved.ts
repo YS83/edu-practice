@@ -7,14 +7,9 @@ export const CRITERIA_KEY = "edu-practice.criteria.v1";
 export type CriteriaForm = Record<keyof Criteria, string>;
 
 export function criteriaFormFor(criteria: Criteria): CriteriaForm {
-  return {
-    minHouseholds: String(criteria.minHouseholds),
-    priceMin: String(criteria.priceMin),
-    priceMax: String(criteria.priceMax),
-    preferHouseholds: String(criteria.preferHouseholds),
-    builtWithinYears: String(criteria.builtWithinYears),
-    parkingPerHousehold: String(criteria.parkingPerHousehold),
-  };
+  return Object.fromEntries(
+    Object.entries(criteria).map(([key, value]) => [key, String(value)])
+  ) as CriteriaForm;
 }
 
 export const defaultCriteriaForm = criteriaFormFor(defaultCriteria);

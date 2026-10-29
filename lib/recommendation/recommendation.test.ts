@@ -134,3 +134,71 @@ describe("evaluateRecommendation", () => {
     expect(statusOf(result, "priceRange")).toBe("unknown");
   });
 });
+
+describe("위치 조건", () => {
+  // 위치 외 조건은 모두 충족하는 단지에 위치 정보를 더한다.
+  const withLocation = (location: Partial<RecommendationFacts>) => ({ ...ideal, ...location });
+
+  test("거리가 기준 이내이면 충족, 넘으면 미충족, 근처에 없으면 미충족이다", () => {
+    const result = evaluateRecommendation(
+      withLocation({ elementary: 500, middle: 900, station: "none", academies: 12 }),
+      defaultCriteria,
+      now
+    );
+
+    expect(statusOf(result, "elementary")).toBe("met");
+    expect(statusOf(result, "middle")).toBe("unmet");
+    expect(statusOf(result, "station")).toBe("unmet");
+    expect(statusOf(result, "academy")).toBe("met");
+  });
+
+  test("기준과 같은 거리와 같은 학원 수는 충족이다", () => {
+    const result = evaluateRecommendation(
+      withLocation({ elementary: 800, academies: 10 }),
+      defaultCriteria,
+      now
+    );
+
+    expect(statusOf(result, "elementary")).toBe("met");
+    expect(statusOf(result, "academy")).toBe("met");
+  });
+
+  test("위치를 조회하지 않았으면 위치 조건은 확인 불가이고 의견에 영향이 없다", () => {
+    const result = evaluateRecommendation(ideal, defaultCriteria, now);
+
+    for (const key of ["elementary", "middle", "station", "academy"]) {
+      expect(statusOf(result, key)).toBe("unknown");
+    }
+    expect(result.opinion).toBe("적극매수");
+  });
+
+  test("위치 조건이 충족되면 선호 개수에 더해져 매수가 적극매수가 된다", () => {
+    // 가격, 세대수 모두 선호에서 벗어나 주차와 준공만 충족하면 매수다.
+    const base = { ...ideal, price: 120000, households: 300, parking: 300, builtYear: 2005 };
+    const before = evaluateRecommendation(base, defaultCriteria, now);
+    const after = evaluateRecommendation(
+      { ...base, elementary: 300, middle: 400, station: 200 },
+      defaultCriteria,
+      now
+    );
+
+    expect(before.opinion).toBe("매수");
+    expect(after.opinion).toBe("적극매수");
+  });
+
+  test("적극매수와 매수 기준 개수를 바꾸면 같은 충족 개수도 다른 등급이 된다", () => {
+    const facts = withLocation({ elementary: 300, middle: 300, station: 300, academies: 20 });
+    // 선호 8개 모두 충족이다.
+    expect(evaluateRecommendation(facts, defaultCriteria, now).opinion).toBe("적극매수");
+
+    const strict = evaluateRecommendation(facts, { ...defaultCriteria, strongMin: 9 }, now);
+    expect(strict.opinion).toBe("매수");
+
+    const stricter = evaluateRecommendation(
+      facts,
+      { ...defaultCriteria, strongMin: 9, buyMin: 9 },
+      now
+    );
+    expect(stricter.opinion).toBe("중립");
+  });
+});
