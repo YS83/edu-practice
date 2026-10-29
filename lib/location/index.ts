@@ -116,18 +116,42 @@ async function countAcademies(place: { x: string; y: string }, key: string) {
   return { count, capped: capped || total > count, radius: ACADEMY_RADIUS };
 }
 
-// 단지를 찾지 못하면 null이다.
-export async function lookupLocation(
-  key: string,
-  districtName: string,
-  complexName: string
-): Promise<LocationResult | null> {
+// 구 이름과 단지명으로 단지 위치를 찾는다. 찾지 못하면 null이다.
+async function searchComplex(key: string, districtName: string, complexName: string) {
   const found = await kakaoGet(
     "keyword.json",
     { query: `${districtName} ${complexName} 아파트`, size: "1" },
     key
   );
   const doc = found.documents?.[0];
+  return doc?.x && doc.y ? doc : null;
+}
+
+export type FoundPlace = { name: string; address: string; lat: number; lng: number };
+
+// 검색 결과 지도에 핀을 찍을 단지 위치. 시설 조회는 하지 않는다.
+export async function findPlace(
+  key: string,
+  districtName: string,
+  complexName: string
+): Promise<FoundPlace | null> {
+  const doc = await searchComplex(key, districtName, complexName);
+  if (!doc) return null;
+  return {
+    name: doc.place_name ?? complexName,
+    address: doc.address_name ?? "",
+    lat: Number(doc.y),
+    lng: Number(doc.x),
+  };
+}
+
+// 단지를 찾지 못하면 null이다.
+export async function lookupLocation(
+  key: string,
+  districtName: string,
+  complexName: string
+): Promise<LocationResult | null> {
+  const doc = await searchComplex(key, districtName, complexName);
   if (!doc?.x || !doc.y) return null;
   const place = { x: doc.x, y: doc.y };
 
