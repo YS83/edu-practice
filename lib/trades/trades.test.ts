@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  areaGroup,
   findComplexTrades,
   parseTrades,
   recentMonths,
@@ -72,6 +73,22 @@ describe("summarizeTrades", () => {
       max: 295000,
       count: 3,
     });
+  });
+
+  test("전용면적이 소수점 아래만 다른 거래는 같은 면적으로 묶어 요약한다", () => {
+    const trades = [
+      trade({ area: 84.93, price: 280000, date: "2026-07-10" }),
+      trade({ area: 84.97, price: 295000, date: "2026-10-01" }),
+      trade({ area: 85.01, price: 285000, date: "2026-09-03" }),
+      trade({ area: 59.9, price: 200000, date: "2026-10-20" }),
+    ];
+
+    const summary = summarizeTrades(trades, "래미안 퍼스티지", 84.93);
+
+    expect(summary?.count).toBe(3);
+    expect(summary?.latest).toEqual({ price: 295000, date: "2026-10-01" });
+    expect(areaGroup(84.93)).toBe(areaGroup(85.01));
+    expect(areaGroup(59.9)).toBe(60);
   });
 
   test("거래가 없으면 null을 돌려준다", () => {

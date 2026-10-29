@@ -22,6 +22,7 @@ const tradesBody = {
   trades: [
     { complex: "래미안 퍼스티지", dong: "반포동", area: 84.97, price: 280000, date: "2026-07-10", floor: 5, buildYear: 2009 },
     { complex: "래미안 퍼스티지", dong: "반포동", area: 84.97, price: 295000, date: "2026-10-01", floor: 9, buildYear: 2009 },
+    { complex: "래미안 퍼스티지", dong: "반포동", area: 84.93, price: 290000, date: "2026-08-01", floor: 7, buildYear: 2009 },
     { complex: "래미안 퍼스티지", dong: "반포동", area: 59.9, price: 200000, date: "2026-09-01", floor: 3, buildYear: 2009 },
   ],
   fetchedAt: "2026-10-29",
@@ -60,14 +61,14 @@ test("단지를 조회해 등록하면 최근 실거래가와 6개월 범위가 
 
   await lookup();
   const registerButtons = await screen.findAllByRole("button", { name: /후보지로 등록/ });
-  // 면적이 다른 두 선택지(59.9㎡, 84.97㎡)가 나온다.
+  // 84.93과 84.97㎡는 같은 85㎡로 묶여서, 85㎡와 60㎡ 두 선택지만 나온다.
   expect(registerButtons).toHaveLength(2);
   expect(String(fetchMock.mock.calls[0][0])).toContain("name=%ED%8D%BC");
 
-  const option = screen.getByText(/84\.97㎡/).closest("li")!;
+  const option = screen.getByText(/85㎡/).closest("li")!;
   fireEvent.click(within(option).getByRole("button", { name: /후보지로 등록/ }));
 
-  expect(await screen.findByText(/최근 6개월 28억 원~29억 5,000만 원, 2건/)).toBeInTheDocument();
+  expect(await screen.findByText(/최근 6개월 28억 원~29억 5,000만 원, 3건/)).toBeInTheDocument();
   expect(screen.getByText(/2026-10-29 조회 \(국토교통부\)/)).toBeInTheDocument();
 
   // 호가 7억: 필요한 대출 2억, 한도 2억 8,000만원이라 살 수 있다.
@@ -89,7 +90,7 @@ test("호가가 비어 있으면 최근 실거래가 기준으로 비교한다�
   render(<CandidatesPage />);
 
   await lookup();
-  const option = (await screen.findByText(/59\.9㎡/)).closest("li")!;
+  const option = (await screen.findByText(/60㎡/)).closest("li")!;
   fireEvent.click(within(option).getByRole("button", { name: /후보지로 등록/ }));
 
   expect(await screen.findByText(/호가가 없어 최근 실거래가 기준/)).toBeInTheDocument();

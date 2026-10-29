@@ -61,13 +61,19 @@ export type TradeSummary = {
   count: number;
 };
 
+// 같은 평형이어도 거래마다 전용면적이 84.93, 84.97처럼 조금씩 달라서 가장 가까운 정수 ㎡로 묶는다.
+export function areaGroup(area: number): number {
+  return Math.round(area);
+}
+
 export function summarizeTrades(
   trades: Trade[],
   complex: string,
   area: number
 ): TradeSummary | null {
+  const group = areaGroup(area);
   const matched = trades.filter(
-    (trade) => trade.complex === complex && trade.area === area
+    (trade) => trade.complex === complex && areaGroup(trade.area) === group
   );
   if (matched.length === 0) return null;
   const latest = matched.reduce((newest, next) =>

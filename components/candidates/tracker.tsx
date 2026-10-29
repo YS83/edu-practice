@@ -49,7 +49,7 @@ import {
   priceBasis,
 } from "@/lib/candidates";
 import type { Candidate, Market, Note } from "@/lib/candidates";
-import { summarizeTrades } from "@/lib/trades";
+import { areaGroup, summarizeTrades } from "@/lib/trades";
 import type { Trade } from "@/lib/trades";
 import { seoulDistricts } from "@/lib/trades/districts";
 
@@ -351,10 +351,10 @@ function RegisterCard({ onAdd }: { onAdd: (candidate: Candidate) => void }) {
     if (search.phase !== "done") return [];
     const seen = new Map<string, Trade>();
     for (const trade of search.trades) {
-      seen.set(`${trade.complex}|${trade.area}`, trade);
+      seen.set(`${trade.complex}|${areaGroup(trade.area)}`, trade);
     }
     return [...seen.values()].sort(
-      (a, b) => a.complex.localeCompare(b.complex) || a.area - b.area
+      (a, b) => a.complex.localeCompare(b.complex) || areaGroup(a.area) - areaGroup(b.area)
     );
   }, [search]);
 
@@ -376,7 +376,7 @@ function RegisterCard({ onAdd }: { onAdd: (candidate: Candidate) => void }) {
       district,
       complex: trade.complex,
       dong: trade.dong,
-      area: trade.area,
+      area: areaGroup(trade.area),
       market,
       listing: "",
       households: "",
@@ -488,12 +488,12 @@ function RegisterCard({ onAdd }: { onAdd: (candidate: Candidate) => void }) {
                 const summary = summarizeTrades(search.trades, trade.complex, trade.area);
                 return (
                   <li
-                    key={`${trade.complex}|${trade.area}`}
+                    key={`${trade.complex}|${areaGroup(trade.area)}`}
                     className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"
                   >
                     <div className="flex flex-col gap-0.5">
                       <span className="font-medium">
-                        {trade.complex} · {trade.area}㎡
+                        {trade.complex} · {areaGroup(trade.area)}㎡
                       </span>
                       <span className="text-sm text-muted-foreground">
                         {trade.dong}
