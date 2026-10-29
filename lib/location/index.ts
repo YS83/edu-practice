@@ -10,10 +10,11 @@ const MAX_PAGES = 3;
 
 export class KakaoError extends Error {}
 
-export type Nearest = { name: string; distance: number };
+// lat, lng는 지도에 핀을 찍는 데만 쓰고 저장하지 않는다.
+export type Nearest = { name: string; distance: number; lat: number; lng: number };
 
 export type LocationResult = {
-  place: { name: string; address: string };
+  place: { name: string; address: string; lat: number; lng: number };
   elementary: Nearest | null;
   middle: Nearest | null;
   station: Nearest | null;
@@ -69,6 +70,9 @@ function categoryParams(
 const toNearest = (doc: Doc): Nearest => ({
   name: doc.place_name ?? "",
   distance: Number(doc.distance),
+  // 카카오는 x가 경도, y가 위도다.
+  lat: Number(doc.y),
+  lng: Number(doc.x),
 });
 
 // 이름이 초등학교, 중학교로 끝나는 가장 가까운 학교를 최대 3쪽까지 찾는다.
@@ -133,7 +137,12 @@ export async function lookupLocation(
     countAcademies(place, key),
   ]);
   return {
-    place: { name: doc.place_name ?? complexName, address: doc.address_name ?? "" },
+    place: {
+      name: doc.place_name ?? complexName,
+      address: doc.address_name ?? "",
+      lat: Number(doc.y),
+      lng: Number(doc.x),
+    },
     ...schools,
     station,
     academies,

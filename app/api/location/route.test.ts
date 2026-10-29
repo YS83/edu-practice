@@ -9,6 +9,8 @@ const place = (name: string, distance: number) => ({
   place_name: name,
   distance: String(distance),
   address_name: "서울 서초구 반포동",
+  x: "127.01",
+  y: "37.51",
 });
 
 // 카카오 로컬 API 대역: 경로와 카테고리 코드로 응답을 나눈다.
@@ -88,11 +90,17 @@ test("단지 위치를 찾고 가장 가까운 초등학교, 중학교, 지하�
   const body = await response.json();
 
   expect(response.status).toBe(200);
-  expect(body.place).toEqual({ name: "래미안퍼스티지", address: "서울 서초구 반포동 1-1" });
+  expect(body.place).toEqual({
+    name: "래미안퍼스티지",
+    address: "서울 서초구 반포동 1-1",
+    lat: 37.5,
+    lng: 127,
+  });
   // 유치원과 고등학교는 건너뛰고 이름이 초등학교, 중학교로 끝나는 가장 가까운 곳만 고른다.
-  expect(body.elementary).toEqual({ name: "서울반포초등학교", distance: 350 });
-  expect(body.middle).toEqual({ name: "반포중학교", distance: 600 });
-  expect(body.station).toEqual({ name: "고속터미널역 7호선", distance: 410 });
+  // 지도에 핀을 찍을 수 있도록 좌표(lat, lng)도 함께 돌려준다.
+  expect(body.elementary).toEqual({ name: "서울반포초등학교", distance: 350, lat: 37.51, lng: 127.01 });
+  expect(body.middle).toEqual({ name: "반포중학교", distance: 600, lat: 37.51, lng: 127.01 });
+  expect(body.station).toEqual({ name: "고속터미널역 7호선", distance: 410, lat: 37.51, lng: 127.01 });
   expect(body.academies).toEqual({ count: 12, capped: false, radius: 800 });
 
   // 키워드는 구 이름과 단지명으로 찾고, 인증은 서버에서만 헤더로 한다.
