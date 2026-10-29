@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { listingGap, priceBasis } from "@/lib/candidates";
+import { listingGap, parseCandidates, priceBasis } from "@/lib/candidates";
 import type { Candidate } from "@/lib/candidates";
 
 const candidate = (overrides: Partial<Candidate>): Candidate => ({
@@ -21,6 +21,9 @@ const candidate = (overrides: Partial<Candidate>): Candidate => ({
   listing: "",
   households: "",
   builtYear: "",
+  parkingGround: "",
+  parkingUnderground: "",
+  info: null,
   notes: [],
   ...overrides,
 });
@@ -64,5 +67,35 @@ describe("listingGap", () => {
   test("호가나 실거래가 중 하나라도 없으면 null이다", () => {
     expect(listingGap(candidate({ listing: "" }))).toBeNull();
     expect(listingGap(candidate({ listing: "310000", market: null }))).toBeNull();
+  });
+});
+
+describe("parseCandidates", () => {
+  test("예전에 저장된 후보지에 없는 필드는 기본값으로 채운다", () => {
+    const old = {
+      id: "c1",
+      district: "11650",
+      complex: "저장된 단지",
+      dong: "",
+      area: 85,
+      market: null,
+      listing: "",
+      households: "800",
+      builtYear: "2015",
+      notes: [],
+    };
+
+    const [candidate] = parseCandidates(JSON.stringify([old]));
+
+    expect(candidate.parkingGround).toBe("");
+    expect(candidate.parkingUnderground).toBe("");
+    expect(candidate.info).toBeNull();
+    expect(candidate.households).toBe("800");
+  });
+
+  test("저장값이 없거나 깨졌으면 빈 목록이다", () => {
+    expect(parseCandidates(null)).toEqual([]);
+    expect(parseCandidates("{not json")).toEqual([]);
+    expect(parseCandidates('{"a":1}')).toEqual([]);
   });
 });

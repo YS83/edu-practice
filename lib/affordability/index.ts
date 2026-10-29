@@ -1,5 +1,11 @@
 // 금액 단위는 만원, 비율은 퍼센트(40 = 40%)다.
 
+import { acquisitionCostsAt, COST_BREAKPOINTS } from "./costs";
+import type { AcquisitionCosts } from "./costs";
+
+export { acquisitionCostsAt };
+export type { AcquisitionCosts };
+
 export type OwnershipStatus = "disposal" | "additional";
 export type Repayment = "annuity" | "principal";
 
@@ -15,6 +21,8 @@ export type AffordabilityInput = {
   rate: number;
   termYears: number;
   repayment: Repayment;
+  // 켜면 사려는 집값에 따라 취득세와 중개보수를 자동으로 더한다. acquisitionCosts는 그 밖의 기타 비용이다.
+  autoCosts: boolean;
 };
 
 export type PolicyBasis = {
@@ -30,7 +38,7 @@ export type BindingConstraint = "ltv" | "cap" | "dsr";
 
 export type NumericField = Exclude<
   keyof AffordabilityInput,
-  "ownershipStatus" | "repayment"
+  "ownershipStatus" | "repayment" | "autoCosts"
 >;
 
 export type AffordabilityResult =
@@ -41,6 +49,8 @@ export type AffordabilityResult =
       loan: number;
       loanLimit: number;
       binding: BindingConstraint;
+      // 그 가격에서 드는 부대비용(취득세, 중개보수, 기타)
+      costs: AcquisitionCosts;
       // 원금균등이면 첫 달 상환액이다.
       monthlyPayment: number;
       netMonthlyIncome: number;
@@ -68,59 +78,77 @@ export function calculateAffordability(
   const invalid = invalidFields(input);
   if (invalid.length > 0) return { status: "invalid", fields: invalid };
 
-  const equity = input.cash + input.saleProceeds - input.acquisitionCosts;
-  if (equity <= 0) return { status: "unaffordable" };
-  const ltv =
-    (input.ownershipStatus === "additional"
-      ? policy.ltvAdditional
-      : policy.ltvDisposal) / 100;
+  const funds = input.cash + input.saleProceeds;
+  if (funds <= input.acquisitionCosts) return { status: "unaffordable" };
 
-  // 구간 [lo, hi]에서 대출 = min(LTV×가격, 캡, ...)이므로
-  // 가격 − 대출 ≤ 자기자본 ⇔ 가격 ≤ min(자기자본/(1−LTV), 자기자본+캡, ...).
-  // 높은 구간부터 보아 처음 성립하는 구간의 가격이 최대 구매 가격이다.
-  let lo = 0;
-  const brackets = policy.priceCaps.map((tier) => {
-    const bracket = { lo, hi: tier.upTo ?? Infinity, cap: tier.cap };
-    lo = tier.upTo ?? Infinity;
-    return bracket;
-  });
+  // 부대비용은 집값에 따라 늘고 한도 캡도 가격 구간마다 다르므로, 계산식이 일정한 구간으로 나눠 푼다.
+  // 한 구간 안에서 "가격 + 비용 − 대출 한도"는 가격에 따라 계속 늘어나므로 이분 탐색으로 풀 수 있다.
+  const gap = (price: number) =>
+    price + acquisitionCostsAt(input, price).total - funds - limitsAt(price, input, policy)[1];
+  const edges = [
+    ...new Set([
+      0,
+      ...policy.priceCaps.flatMap((tier) => (tier.upTo === null ? [] : [tier.upTo])),
+      ...COST_BREAKPOINTS,
+      UPPER_PRICE,
+    ]),
+  ].sort((a, b) => a - b);
 
-  const dsrLoan = dsrLoanLimit(input, policy);
-
-  for (const bracket of brackets.reverse()) {
-    const maxPrice = Math.min(
-      bracket.hi,
-      equity / (1 - ltv),
-      equity + bracket.cap,
-      equity + dsrLoan
-    );
-    if (maxPrice <= bracket.lo) continue;
-    const loan = maxPrice - equity;
-    const limits: [BindingConstraint, number][] = [
-      ["ltv", ltv * maxPrice],
-      ["cap", bracket.cap],
-      ["dsr", dsrLoan],
-    ];
-    const [binding, loanLimit] = limits.reduce((lowest, next) =>
-      next[1] < lowest[1] - 1e-9 ? next : lowest
-    );
+  for (let i = edges.length - 2; i >= 0; i--) {
+    const lo = edges[i] + EPSILON;
+    const hi = edges[i + 1];
+    if (gap(lo) > 0) continue;
+    let low = lo;
+    let high = hi;
+    if (gap(hi) <= 0) {
+      low = hi;
+    } else {
+      for (let step = 0; step < 100; step++) {
+        const mid = (low + high) / 2;
+        if (gap(mid) <= 0) low = mid;
+        else high = mid;
+      }
+    }
+    const maxPrice = low;
+    const costs = acquisitionCostsAt(input, maxPrice);
+    const [binding, loanLimit] = limitsAt(maxPrice, input, policy);
+    const loan = Math.max(0, maxPrice + costs.total - funds);
     return {
       status: "ok",
       maxPrice,
       loan,
       loanLimit,
       binding,
+      costs,
       ...repaymentOf(loan, input),
     };
   }
-  return {
-    status: "ok",
-    maxPrice: equity,
-    loan: 0,
-    loanLimit: 0,
-    binding: "ltv",
-    ...repaymentOf(0, input),
-  };
+  return { status: "unaffordable" };
+}
+
+const EPSILON = 1e-6;
+// 최대 가격을 찾는 탐색의 상한(10조원)이다. 마지막 구간의 끝으로만 쓴다.
+const UPPER_PRICE = 1e9;
+
+// 그 가격에서 대출 한도를 정하는 규제와 한도. LTV, 가격 구간별 캡, DSR 중 가장 낮은 값이다.
+function limitsAt(
+  price: number,
+  input: AffordabilityInput,
+  policy: PolicyBasis
+): [BindingConstraint, number] {
+  const ltv =
+    (input.ownershipStatus === "additional"
+      ? policy.ltvAdditional
+      : policy.ltvDisposal) / 100;
+  const tier =
+    policy.priceCaps.find((candidate) => candidate.upTo === null || price <= candidate.upTo) ??
+    policy.priceCaps[policy.priceCaps.length - 1];
+  const limits: [BindingConstraint, number][] = [
+    ["ltv", ltv * price],
+    ["cap", tier.cap],
+    ["dsr", dsrLoanLimit(input, policy)],
+  ];
+  return limits.reduce((lowest, next) => (next[1] < lowest[1] - 1e-9 ? next : lowest));
 }
 
 // 월 상환액은 스트레스 금리 없이 사용자가 입력한 실제 금리로 계산한다.
@@ -174,6 +202,7 @@ export type PriceEvaluation =
       // 필요한 대출액이 한도를 넘는 만큼. 살 수 있으면 0이다.
       shortfall: number;
       binding: BindingConstraint;
+      costs: AcquisitionCosts;
       monthlyPayment: number;
       netMonthlyIncome: number;
     }
@@ -190,24 +219,9 @@ export function evaluatePrice(
     return { status: "invalid", fields: invalid };
   }
 
-  const equity = input.cash + input.saleProceeds - input.acquisitionCosts;
-  const ltv =
-    (input.ownershipStatus === "additional"
-      ? policy.ltvAdditional
-      : policy.ltvDisposal) / 100;
-  const tier =
-    policy.priceCaps.find((candidate) => candidate.upTo === null || price <= candidate.upTo) ??
-    policy.priceCaps[policy.priceCaps.length - 1];
-
-  const limits: [BindingConstraint, number][] = [
-    ["ltv", ltv * price],
-    ["cap", tier.cap],
-    ["dsr", dsrLoanLimit(input, policy)],
-  ];
-  const [binding, loanLimit] = limits.reduce((lowest, next) =>
-    next[1] < lowest[1] - 1e-9 ? next : lowest
-  );
-  const loan = Math.max(0, price - equity);
+  const costs = acquisitionCostsAt(input, price);
+  const [binding, loanLimit] = limitsAt(price, input, policy);
+  const loan = Math.max(0, price + costs.total - (input.cash + input.saleProceeds));
   const shortfall = Math.max(0, loan - loanLimit);
   return {
     status: "ok",
@@ -216,6 +230,7 @@ export function evaluatePrice(
     loanLimit,
     shortfall,
     binding,
+    costs,
     ...repaymentOf(loan, input),
   };
 }

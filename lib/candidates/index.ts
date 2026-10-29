@@ -26,7 +26,24 @@ export type Candidate = {
   listing: string;
   households: string;
   builtYear: string;
+  // 지상과 지하 주차 대수. 비어 있으면 모르는 값이다.
+  parkingGround: string;
+  parkingUnderground: string;
+  // 공식 단지 정보(K-apt)에서 가져왔다면 그 출처와 가져온 시점의 값. 직접 고쳤는지 비교하는 데 쓴다.
+  info: ComplexSource | null;
   notes: Note[];
+};
+
+export type ComplexSource = {
+  code: string;
+  name: string;
+  fetchedAt: string;
+  snapshot: {
+    households: string;
+    builtYear: string;
+    parkingGround: string;
+    parkingUnderground: string;
+  };
 };
 
 function toPositive(text: string): number | null {
@@ -59,7 +76,17 @@ export function parseCandidates(raw: string | null | undefined): Candidate[] {
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as Candidate[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    // 예전에 저장된 후보지에는 없는 필드를 기본값으로 채운다.
+    return (parsed as Partial<Candidate>[]).map(
+      (candidate) =>
+        ({
+          parkingGround: "",
+          parkingUnderground: "",
+          info: null,
+          ...candidate,
+        }) as Candidate
+    );
   } catch {
     return [];
   }

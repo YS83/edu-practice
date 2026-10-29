@@ -12,7 +12,7 @@ function saveAffordability() {
   window.localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({
-      form: { ...initialForm, cash: "50000", annualIncome: "10000", monthlyTakeHome: "800" },
+      form: { ...initialForm, cash: "50000", annualIncome: "10000", monthlyTakeHome: "800", autoCosts: false },
       policy: policyFormFor(defaultPolicyId),
     })
   );
@@ -206,4 +206,186 @@ test("서버에서 그린 화면을 브라우저가 이어받아도 저장된 �
 
   expect((await screen.findAllByText(/저장된 단지/)).length).toBeGreaterThan(0);
   expect(window.localStorage.getItem(CANDIDATES_KEY)).toContain("저장된 단지");
+});
+
+// URL에 따라 응답을 나눠 주는 외부 API 대역이다.
+function stubRoutes(routes: Record<string, { status: number; body: unknown }>) {
+  const fetchMock = vi.fn(async (url: string) => {
+    const key = Object.keys(routes).find((prefix) => String(url).startsWith(prefix));
+    const route = key ? routes[key] : { status: 404, body: {} };
+    return Response.json(route.body, { status: route.status });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+// 현금 7억이라 9억 5천만원 집(대출 2억 5천만원)을 살 수 있다.
+function saveRichAffordability() {
+  window.localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      form: { ...initialForm, cash: "70000", annualIncome: "10000", monthlyTakeHome: "800", autoCosts: false },
+      policy: policyFormFor(defaultPolicyId),
+    })
+  );
+}
+
+async function registerManually(price: string) {
+  await lookup("반포자이");
+  await screen.findByText(/DATA_GO_KR_API_KEY/);
+  type(/^최근 실거래가/, price);
+  fireEvent.click(screen.getByRole("button", { name: /직접 입력으로 등록/ }));
+  await screen.findByRole("button", { name: /단지 정보 가져오기/ });
+}
+
+const complexRoutes = {
+  "/api/trades": { status: 503, body: { error: "missing-key" } },
+  "/api/complex?district": {
+    status: 200,
+    body: {
+      complexes: [
+        { code: "A10027000", name: "반포자이", address: "서울특별시 서초구 반포동" },
+      ],
+      fetchedAt: "2026-10-29",
+    },
+  },
+  "/api/complex?code": {
+    status: 200,
+    body: {
+      info: { households: 3410, builtYear: 2009, parkingGround: 100, parkingUnderground: 3500 },
+      fetchedAt: "2026-10-29",
+    },
+  },
+};
+
+test("단지 정보를 가져오면 세대수, 준공연도, 주차가 채워지고 기준에 맞춰 매수 의견이 나온다", async () => {
+  saveRichAffordability();
+  stubRoutes(complexRoutes);
+  render(<CandidatesPage />);
+  await registerManually("95000");
+
+  fireEvent.click(screen.getByRole("button", { name: /단지 정보 가져오기/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /이 단지로 채우기/ }));
+
+  expect(await screen.findByText(/국토교통부 K-apt · 반포자이 · 2026-10-29 조회/)).toBeInTheDocument();
+  expect(screen.getByLabelText(/^세대수/)).toHaveValue("3410");
+  expect(screen.getByLabelText(/^준공연도/)).toHaveValue("2009");
+  expect(screen.getByLabelText(/^지상 주차/)).toHaveValue("100");
+  expect(screen.getByLabelText(/^지하 주차/)).toHaveValue("3500");
+
+  // 필수 2개 충족, 선호 중 가격(9.5억), 500세대, 주차(3,600대/3,410세대) 3개 충족, 준공 10년 초과는 미충족.
+  expect(screen.getAllByText("적극매수").length).toBeGreaterThan(0);
+  expect(screen.getByText(/세대수 200세대 이상/)).toBeInTheDocument();
+  expect(screen.getByText(/준공 10년 이내/).closest("li")).toHaveTextContent("미충족");
+  expect(screen.getAllByText(/투자는 개인 판단에 따른 것이며/).length).toBeGreaterThan(0);
+  expect(screen.getByText(/위치 기준은 아직 반영되지 않았습니다/)).toBeInTheDocument();
+});
+
+test("가져온 값을 직접 고치면 직접 수정 표시가 붙고 의견이 다시 계산된다", async () => {
+  saveRichAffordability();
+  stubRoutes(complexRoutes);
+  render(<CandidatesPage />);
+  await registerManually("95000");
+  fireEvent.click(screen.getByRole("button", { name: /단지 정보 가져오기/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /이 단지로 채우기/ }));
+  await screen.findByText(/국토교통부 K-apt/);
+  expect(screen.queryByText(/직접 수정:/)).not.toBeInTheDocument();
+
+  // 세대수를 150으로 고치면 필수 조건(200세대)을 못 지켜 중립이 된다.
+  type(/^세대수/, "150");
+
+  expect(screen.getByText("직접 수정: 세대수")).toBeInTheDocument();
+  expect(screen.getAllByText("중립").length).toBeGreaterThan(0);
+  expect(screen.getByText(/세대수 200세대 이상/).closest("li")).toHaveTextContent("미충족");
+});
+
+test("단지 정보 조회가 실패해도 직접 입력으로 의견을 계산할 수 있다", async () => {
+  saveRichAffordability();
+  stubRoutes({
+    ...complexRoutes,
+    "/api/complex?district": { status: 503, body: { error: "missing-key" } },
+  });
+  render(<CandidatesPage />);
+  await registerManually("95000");
+
+  fireEvent.click(screen.getByRole("button", { name: /단지 정보 가져오기/ }));
+  expect(await screen.findByText("단지 정보를 가져오지 못했습니다")).toBeInTheDocument();
+
+  type(/^세대수/, "800");
+  type(/^준공연도/, "2020");
+  type(/^지상 주차/, "300");
+  type(/^지하 주차/, "700");
+
+  // 가격, 500세대, 준공, 주차(1,000대/800세대) 4개 충족.
+  expect(screen.getAllByText("적극매수").length).toBeGreaterThan(0);
+});
+
+test("세대수를 모르면 판정을 보류하고, 주차만 모르면 나머지 조건으로 계산한다", async () => {
+  saveRichAffordability();
+  stubRoutes(complexRoutes);
+  render(<CandidatesPage />);
+  await registerManually("95000");
+
+  expect(screen.getAllByText("보류").length).toBeGreaterThan(0);
+  expect(screen.getByText("확인 불가 항목이 있어 판정을 보류합니다.")).toBeInTheDocument();
+
+  type(/^세대수/, "800");
+  type(/^준공연도/, "2020");
+
+  // 주차는 확인 불가이지만 가격, 500세대, 준공 3개 충족으로 적극매수다.
+  expect(screen.getAllByText("적극매수").length).toBeGreaterThan(0);
+  expect(screen.getByText(/주차 세대당/).closest("li")).toHaveTextContent("확인 불가");
+});
+
+test("기준을 바꾸면 모든 후보지의 의견이 다시 계산되고 새로고침 후에도 유지된다", async () => {
+  saveRichAffordability();
+  stubRoutes(complexRoutes);
+  const first = render(<CandidatesPage />);
+  await registerManually("95000");
+  type(/^세대수/, "800");
+  type(/^준공연도/, "2020");
+  type(/^지상 주차/, "1000");
+  expect(screen.getAllByText("적극매수").length).toBeGreaterThan(0);
+
+  // 세대수 최소를 1,000으로 올리면 800세대는 필수를 못 지켜 중립이다.
+  type(/^필수 · 세대수 최소/, "1000");
+  expect(screen.getAllByText("중립").length).toBeGreaterThan(0);
+  expect(screen.queryByText("적극매수")).not.toBeInTheDocument();
+
+  first.unmount();
+  render(<CandidatesPage />);
+  expect(await screen.findByLabelText(/^필수 · 세대수 최소/)).toHaveValue("1000");
+});
+
+test("기준 값이 잘못되면 의견을 계산하지 않고 이유를 알려 준다", async () => {
+  saveRichAffordability();
+  stubRoutes(complexRoutes);
+  render(<CandidatesPage />);
+  await registerManually("95000");
+
+  type(/^선호 · 선호 가격 최소/, "abc");
+
+  expect(screen.getByText(/고칠 때까지 의견을 계산하지 않습니다/)).toBeInTheDocument();
+  expect(screen.getByText(/매수 의견 기준을 확인하면/)).toBeInTheDocument();
+});
+
+test("자동 부대비용을 켜 두면 후보지의 필요한 대출액에 그 집값의 취득세와 중개보수가 더해진다", async () => {
+  window.localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      form: { ...initialForm, cash: "50000", annualIncome: "10000", monthlyTakeHome: "800", autoCosts: true },
+      policy: policyFormFor(defaultPolicyId),
+    })
+  );
+  stubFetch(200, tradesBody);
+  render(<CandidatesPage />);
+  await lookup();
+  const option = (await screen.findByText(/85㎡/)).closest("li")!;
+  fireEvent.click(within(option).getByRole("button", { name: /후보지로 등록/ }));
+
+  // 호가 7억: 부대비용 1,563만원이 더해져 필요한 대출은 2억 1,563만원이다(손계산).
+  fireEvent.change(await screen.findByLabelText(/^호가/), { target: { value: "70000" } });
+
+  expect(screen.getByText(/부대비용 1,563만 원/)).toBeInTheDocument();
+  expect(screen.getByText(/필요한 대출액 2억 1,563만 원 · 대출 한도 2억 8,000만 원/)).toBeInTheDocument();
 });

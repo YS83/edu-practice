@@ -49,9 +49,22 @@ import {
   priceBasis,
 } from "@/lib/candidates";
 import type { Candidate, Market, Note } from "@/lib/candidates";
+import { evaluateRecommendation } from "@/lib/recommendation";
+import {
+  CRITERIA_KEY,
+  defaultCriteriaForm,
+  parseCriteriaForm,
+  toCriteria,
+} from "@/lib/recommendation/saved";
+import type { CriteriaForm } from "@/lib/recommendation/saved";
 import { areaGroup, summarizeTrades } from "@/lib/trades";
 import type { Trade } from "@/lib/trades";
 import { seoulDistricts } from "@/lib/trades/districts";
+
+import { ComplexInfoPanel } from "./complex-info";
+import { CriteriaCard } from "./criteria-card";
+import { candidateFacts } from "./facts";
+import { OpinionBadge, OpinionPanel } from "./opinion";
 
 const bindingLabels: Record<BindingConstraint, string> = {
   ltv: "LTV(담보인정비율)",
@@ -78,6 +91,14 @@ function readCandidates(): string | null {
     return window.localStorage.getItem(CANDIDATES_KEY);
   } catch {
     // 저장소를 쓸 수 없어도 화면은 정상 동작해야 한다.
+    return null;
+  }
+}
+
+function readCriteria(): string | null {
+  try {
+    return window.localStorage.getItem(CRITERIA_KEY);
+  } catch {
     return null;
   }
 }
@@ -147,10 +168,16 @@ export function CandidateTracker() {
     readSaved,
     () => undefined
   );
+  const criteriaRaw = useSyncExternalStore(
+    subscribeNothing,
+    readCriteria,
+    () => undefined
+  );
   return (
     <TrackerBody
       key={candidatesRaw === undefined ? "server" : "browser"}
       initial={parseCandidates(candidatesRaw)}
+      initialCriteria={parseCriteriaForm(criteriaRaw)}
       affordabilityRaw={affordabilityRaw ?? null}
       persist={candidatesRaw !== undefined}
     />
@@ -159,14 +186,17 @@ export function CandidateTracker() {
 
 function TrackerBody({
   initial,
+  initialCriteria,
   affordabilityRaw,
   persist,
 }: {
   initial: Candidate[];
+  initialCriteria: CriteriaForm;
   affordabilityRaw: string | null;
   persist: boolean;
 }) {
   const [candidates, setCandidates] = useState<Candidate[]>(initial);
+  const [criteriaForm, setCriteriaForm] = useState<CriteriaForm>(initialCriteria);
 
   useEffect(() => {
     if (!persist) return;
@@ -176,6 +206,17 @@ function TrackerBody({
       // 위와 같다.
     }
   }, [candidates, persist]);
+
+  useEffect(() => {
+    if (!persist) return;
+    try {
+      window.localStorage.setItem(CRITERIA_KEY, JSON.stringify(criteriaForm));
+    } catch {
+      // 위와 같다.
+    }
+  }, [criteriaForm, persist]);
+
+  const criteria = useMemo(() => toCriteria(criteriaForm), [criteriaForm]);
 
   const saved = useMemo(() => parseSaved(affordabilityRaw), [affordabilityRaw]);
   const input = useMemo(() => toInput(saved.form), [saved]);
@@ -192,14 +233,14 @@ function TrackerBody({
     () =>
       candidates.map((candidate) => {
         const priced = priceBasis(candidate);
-        if (!priced || !basis) return { candidate, priced, result: null };
-        return {
-          candidate,
-          priced,
-          result: evaluatePrice(input, basis, priced.price),
-        };
+        const result =
+          priced && basis ? evaluatePrice(input, basis, priced.price) : null;
+        const recommendation = criteria
+          ? evaluateRecommendation(candidateFacts(candidate, result), criteria, new Date())
+          : null;
+        return { candidate, priced, result, recommendation };
       }),
-    [candidates, input, basis]
+    [candidates, input, basis, criteria]
   );
 
   const calculationReady =
@@ -220,6 +261,15 @@ function TrackerBody({
           </AlertDescription>
         </Alert>
       ) : null}
+
+      <CriteriaCard
+        form={criteriaForm}
+        valid={criteria !== null}
+        onChange={(key, value) =>
+          setCriteriaForm((current) => ({ ...current, [key]: value }))
+        }
+        onReset={() => setCriteriaForm(defaultCriteriaForm)}
+      />
 
       <RegisterCard
         onAdd={(candidate) => setCandidates((current) => [candidate, ...current])}
@@ -252,12 +302,13 @@ function TrackerBody({
                       <TableHead className="text-right">호가</TableHead>
                       <TableHead className="text-right">최근 실거래가</TableHead>
                       <TableHead>살 수 있나</TableHead>
+                      <TableHead>매수 의견</TableHead>
                       <TableHead className="text-right">월 상환액</TableHead>
                       <TableHead className="text-right">실질 소득(월)</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {evaluations.map(({ candidate, priced, result }) => (
+                    {evaluations.map(({ candidate, priced, result, recommendation }) => (
                       <TableRow key={candidate.id}>
                         <TableCell className="font-medium">
                           {candidate.complex}
@@ -280,6 +331,13 @@ function TrackerBody({
                             "-"
                           )}
                         </TableCell>
+                        <TableCell>
+                          {recommendation ? (
+                            <OpinionBadge opinion={recommendation.opinion} />
+                          ) : (
+                            "-"
+                          )}
+                        </TableCell>
                         <TableCell className="text-right">
                           {result?.status === "ok" ? formatMan(result.monthlyPayment) : "-"}
                         </TableCell>
@@ -294,12 +352,14 @@ function TrackerBody({
             </CardContent>
           </Card>
 
-          {evaluations.map(({ candidate, priced, result }) => (
+          {evaluations.map(({ candidate, priced, result, recommendation }) => (
             <CandidateCard
               key={candidate.id}
               candidate={candidate}
               priced={priced}
               result={result}
+              recommendation={recommendation}
+              criteria={criteria}
               onChange={(patch) => update(candidate.id, patch)}
               onDelete={() =>
                 setCandidates((current) =>
@@ -381,6 +441,9 @@ function RegisterCard({ onAdd }: { onAdd: (candidate: Candidate) => void }) {
       listing: "",
       households: "",
       builtYear: trade.buildYear ? String(trade.buildYear) : "",
+      parkingGround: "",
+      parkingUnderground: "",
+      info: null,
       notes: [],
     });
   }
@@ -407,6 +470,9 @@ function RegisterCard({ onAdd }: { onAdd: (candidate: Candidate) => void }) {
       listing: "",
       households: "",
       builtYear: "",
+      parkingGround: "",
+      parkingUnderground: "",
+      info: null,
       notes: [],
     });
     setManualArea("");
@@ -555,12 +621,16 @@ function CandidateCard({
   candidate,
   priced,
   result,
+  recommendation,
+  criteria,
   onChange,
   onDelete,
 }: {
   candidate: Candidate;
   priced: ReturnType<typeof priceBasis>;
   result: ReturnType<typeof evaluatePrice> | null;
+  recommendation: ReturnType<typeof evaluateRecommendation> | null;
+  criteria: ReturnType<typeof toCriteria>;
   onChange: (patch: Partial<Candidate>) => void;
   onDelete: () => void;
 }) {
@@ -593,6 +663,7 @@ function CandidateCard({
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         <FieldGroup>
+          <ComplexInfoPanel candidate={candidate} onChange={onChange} />
           <div className="grid gap-4 sm:grid-cols-3">
             <TextField
               id={`${idPrefix}-listing`}
@@ -614,6 +685,20 @@ function CandidateCard({
               unit="년"
               value={candidate.builtYear}
               onChange={(builtYear) => onChange({ builtYear })}
+            />
+            <TextField
+              id={`${idPrefix}-parking-ground`}
+              label="지상 주차"
+              unit="대"
+              value={candidate.parkingGround}
+              onChange={(parkingGround) => onChange({ parkingGround })}
+            />
+            <TextField
+              id={`${idPrefix}-parking-underground`}
+              label="지하 주차"
+              unit="대"
+              value={candidate.parkingUnderground}
+              onChange={(parkingUnderground) => onChange({ parkingUnderground })}
             />
           </div>
         </FieldGroup>
@@ -655,6 +740,12 @@ function CandidateCard({
                 {" "}{priced ? formatMan(priced.price) : ""}
               </span>
             </div>
+            <p className="text-sm text-muted-foreground">
+              부대비용 {formatMan(result.costs.total)}
+              {result.costs.tax > 0
+                ? ` (취득세 등 ${formatMan(result.costs.tax)}, 중개보수 ${formatMan(result.costs.brokerage)}${result.costs.extra > 0 ? `, 기타 ${formatMan(result.costs.extra)}` : ""})`
+                : ""}
+            </p>
             <p className="text-sm">
               필요한 대출액 {formatMan(result.loan)} · 대출 한도 {formatMan(result.loanLimit)}
               {result.affordable ? "" : ` · 부족액 ${formatMan(result.shortfall)}`}
@@ -669,6 +760,14 @@ function CandidateCard({
         ) : (
           <p className="text-sm text-muted-foreground">
             구매력 입력이 있고 가격이 정해지면 여기에서 비교 결과를 보여줍니다.
+          </p>
+        )}
+
+        {recommendation && criteria ? (
+          <OpinionPanel recommendation={recommendation} criteria={criteria} />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            매수 의견 기준을 확인하면 이 후보지의 의견을 보여줍니다.
           </p>
         )}
 

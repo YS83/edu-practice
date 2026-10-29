@@ -34,13 +34,19 @@ test("자산과 소득을 넣으면 최대 가격과 월 상환 부담을 보여
   type(/^연 소득/, "10000");
   type(/^월 실수령 소득/, "800");
 
-  // 현금 5억, LTV 40%이면 5억 ÷ 0.6 = 약 8억 3,333만 원이다.
-  expect(screen.getAllByText("8억 3,333만 원").length).toBeGreaterThan(0);
+  // 현금 5억, LTV 40%에 부대비용(취득세, 중개보수) 자동 계산이면 약 7억 9,457만 원이다(손계산).
+  expect(screen.getAllByText("7억 9,457만 원").length).toBeGreaterThan(0);
+  // 그 가격의 부대비용은 약 2,326만 원이다.
+  expect(screen.getAllByText("2,326만 원").length).toBeGreaterThan(0);
   expect(screen.getByText(/대출 한도를 정한 규제/)).toBeInTheDocument();
 
   type(/^LTV \(처분조건부\)/, "50");
 
-  // 5억 ÷ 0.5 = 10억
+  // LTV 50%이면 약 9억 2,937만 원이다(손계산).
+  expect(screen.getAllByText("9억 2,937만 원").length).toBeGreaterThan(0);
+
+  // 자동 계산을 끄면 부대비용이 사라져 5억 ÷ 0.5 = 10억이 된다.
+  fireEvent.click(screen.getByRole("radio", { name: /직접 입력만 사용/ }));
   expect(screen.getAllByText("10억 원").length).toBeGreaterThan(0);
 });
 

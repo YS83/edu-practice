@@ -15,6 +15,7 @@ export type FormState = {
   rate: string;
   termYears: string;
   repayment: "annuity" | "principal";
+  autoCosts: boolean;
 };
 
 export type PolicyForm = {
@@ -42,6 +43,7 @@ export const initialForm: FormState = {
   rate: "4",
   termYears: "30",
   repayment: "annuity",
+  autoCosts: true,
 };
 
 export function policyFormFor(policyId: string): PolicyForm {
@@ -79,6 +81,7 @@ export function toInput(form: FormState): AffordabilityInput {
     rate: toNumber(form.rate),
     termYears: toNumber(form.termYears),
     repayment: form.repayment,
+    autoCosts: form.autoCosts,
   };
 }
 

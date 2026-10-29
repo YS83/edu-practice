@@ -206,10 +206,35 @@ function EstimatorForm({
                 value={form.saleProceeds}
                 onChange={setField("saleProceeds")}
               />
+              <FieldSet>
+                <FieldLegend variant="label">부대비용</FieldLegend>
+                <RadioGroup
+                  value={form.autoCosts ? "auto" : "manual"}
+                  onValueChange={(value) =>
+                    setForm((current) => ({ ...current, autoCosts: value === "auto" }))
+                  }
+                >
+                  <Label className="flex items-center gap-2 font-normal">
+                    <RadioGroupItem value="auto" />
+                    집값에 맞춰 자동 계산 (취득세, 중개보수)
+                  </Label>
+                  <Label className="flex items-center gap-2 font-normal">
+                    <RadioGroupItem value="manual" />
+                    직접 입력만 사용
+                  </Label>
+                </RadioGroup>
+                <FieldDescription>
+                  취득세는 6억 이하 1%, 9억 초과 3%(그 사이는 누진)와 지방교육세, 중개보수는 서울 매매 상한요율로 계산한 평균적인 값입니다. 농어촌특별세, 부가세, 등기비용은 넣지 않았습니다.
+                </FieldDescription>
+              </FieldSet>
               <MoneyField
                 id="acquisitionCosts"
-                label="부대비용"
-                description="취득세, 중개 수수료, 이사비 등의 합계를 직접 넣어 주세요."
+                label={form.autoCosts ? "기타 비용" : "부대비용"}
+                description={
+                  form.autoCosts
+                    ? "이사비, 등기비용, 수리비 등 자동 계산에 없는 비용을 직접 넣어 주세요."
+                    : "취득세, 중개 수수료, 이사비 등의 합계를 직접 넣어 주세요."
+                }
                 value={form.acquisitionCosts}
                 onChange={setField("acquisitionCosts")}
               />
@@ -498,6 +523,7 @@ function EstimatorForm({
                 />
                 <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-1">
                   <Stat label="대출 한도" value={formatMan(result.loanLimit)} />
+                  <Stat label="부대비용" value={formatMan(result.costs.total)} />
                   <Stat label="필요한 대출액" value={formatMan(result.loan)} />
                   <Stat
                     label={
