@@ -278,7 +278,7 @@ test("단지 정보를 가져오면 세대수, 준공연도, 주차가 채워지
   expect(screen.getByText(/세대수 200세대 이상/)).toBeInTheDocument();
   expect(screen.getByText(/준공 10년 이내/).closest("li")).toHaveTextContent("미충족");
   expect(screen.getAllByText(/투자는 개인 판단에 따른 것이며/).length).toBeGreaterThan(0);
-  expect(screen.getByText(/위치 기준은 아직 반영되지 않았습니다/)).toBeInTheDocument();
+  expect(screen.getByText(/위치 정보를 가져오면 반영됩니다/)).toBeInTheDocument();
 });
 
 test("가져온 값을 직접 고치면 직접 수정 표시가 붙고 의견이 다시 계산된다", async () => {
@@ -388,4 +388,117 @@ test("자동 부대비용을 켜 두면 후보지의 필요한 대출액에 그 
 
   expect(screen.getByText(/부대비용 1,563만 원/)).toBeInTheDocument();
   expect(screen.getByText(/필요한 대출액 2억 1,563만 원 · 대출 한도 2억 8,000만 원/)).toBeInTheDocument();
+});
+
+const locationBody = {
+  place: { name: "래미안퍼스티지", address: "서울 서초구 반포동 1-1" },
+  elementary: { name: "서울반포초등학교", distance: 350 },
+  middle: { name: "반포중학교", distance: 600 },
+  station: { name: "고속터미널역 7호선", distance: 410 },
+  academies: { count: 12, capped: false, radius: 800 },
+};
+
+function locationRoutes(location: { status: number; body: unknown }) {
+  return { ...complexRoutes, "/api/location": location };
+}
+
+async function openLocationCandidate() {
+  saveRichAffordability();
+  render(<CandidatesPage />);
+  await registerManually("95000");
+  type(/^세대수/, "800");
+  type(/^준공연도/, "2020");
+}
+
+test("위치 정보를 가져오면 가까운 학교, 역, 학원 수가 보이고 매수 의견 근거에 반영된다", async () => {
+  stubRoutes(locationRoutes({ status: 200, body: locationBody }));
+  await openLocationCandidate();
+  expect(screen.getByText(/위치 정보를 가져오면 반영됩니다/)).toBeInTheDocument();
+  expect(screen.getByText(/초등학교 800m 이내/).closest("li")).toHaveTextContent("확인 불가");
+
+  fireEvent.click(screen.getByRole("button", { name: /위치 정보 가져오기/ }));
+
+  expect(await screen.findByText("서울반포초등학교 · 350m")).toBeInTheDocument();
+  expect(screen.getByText("반포중학교 · 600m")).toBeInTheDocument();
+  expect(screen.getByText("고속터미널역 7호선 · 410m")).toBeInTheDocument();
+  expect(screen.getByText("12개")).toBeInTheDocument();
+  expect(screen.getByText(/찾은 장소: 래미안퍼스티지 \(서울 서초구 반포동 1-1\)/)).toBeInTheDocument();
+  expect(screen.getAllByText(/직선거리/).length).toBeGreaterThan(0);
+  expect(screen.getByText(/카카오 로컬 API/)).toBeInTheDocument();
+  expect(screen.getByText(/초등학교 800m 이내/).closest("li")).toHaveTextContent("충족");
+  expect(screen.getByText(/학원 10개 이상/).closest("li")).toHaveTextContent("충족");
+  expect(screen.queryByText(/위치 정보를 가져오면 반영됩니다/)).not.toBeInTheDocument();
+});
+
+test("반경 안에 시설이 없으면 근처에 없음으로 보이고 미충족이다", async () => {
+  stubRoutes(
+    locationRoutes({
+      status: 200,
+      body: { ...locationBody, station: null, academies: { count: 45, capped: true, radius: 800 } },
+    })
+  );
+  await openLocationCandidate();
+
+  fireEvent.click(screen.getByRole("button", { name: /위치 정보 가져오기/ }));
+
+  expect(await screen.findByText("근처에 없음")).toBeInTheDocument();
+  expect(screen.getByText("45개 이상")).toBeInTheDocument();
+  expect(screen.getByText(/지하철역 800m 이내/).closest("li")).toHaveTextContent("미충족");
+});
+
+test("거리 기준을 바꾸면 다시 조회하지 않고 의견 근거가 바뀐다", async () => {
+  const fetchMock = stubRoutes(locationRoutes({ status: 200, body: locationBody }));
+  await openLocationCandidate();
+  fireEvent.click(screen.getByRole("button", { name: /위치 정보 가져오기/ }));
+  await screen.findByText("서울반포초등학교 · 350m");
+  const before = fetchMock.mock.calls.length;
+
+  type(/^선호 · 초등학교까지/, "300");
+
+  expect(screen.getByText(/초등학교 300m 이내/).closest("li")).toHaveTextContent("미충족");
+  expect(fetchMock.mock.calls.length).toBe(before);
+});
+
+test("위치 조회 결과는 저장하지 않아 다시 열면 사라진다", async () => {
+  stubRoutes(locationRoutes({ status: 200, body: locationBody }));
+  await openLocationCandidate();
+  fireEvent.click(screen.getByRole("button", { name: /위치 정보 가져오기/ }));
+  await screen.findByText("서울반포초등학교 · 350m");
+
+  expect(JSON.stringify({ ...window.localStorage })).not.toContain("서울반포초등학교");
+  expect(JSON.stringify({ ...window.localStorage })).not.toContain("고속터미널역");
+});
+
+test("카카오 키가 없으면 이유를 보여 주고 위치 조건은 확인 불가로 남는다", async () => {
+  stubRoutes(locationRoutes({ status: 503, body: { error: "missing-key" } }));
+  await openLocationCandidate();
+
+  fireEvent.click(screen.getByRole("button", { name: /위치 정보 가져오기/ }));
+
+  expect(await screen.findByText(/KAKAO_REST_API_KEY/)).toBeInTheDocument();
+  expect(screen.getByText(/초등학교 800m 이내/).closest("li")).toHaveTextContent("확인 불가");
+});
+
+test("단지 위치를 찾지 못하면 안내하고, 카카오 오류의 원인도 보여 준다", async () => {
+  stubRoutes(locationRoutes({ status: 404, body: { error: "not-found" } }));
+  await openLocationCandidate();
+  fireEvent.click(screen.getByRole("button", { name: /위치 정보 가져오기/ }));
+  expect(await screen.findByText(/이 단지의 위치를 찾지 못했습니다/)).toBeInTheDocument();
+
+  stubRoutes(locationRoutes({ status: 502, body: { error: "upstream", detail: "HTTP 401: invalid key" } }));
+  fireEvent.click(screen.getByRole("button", { name: /위치 정보 가져오기/ }));
+  expect(await screen.findByText(/카카오 응답: HTTP 401: invalid key/)).toBeInTheDocument();
+});
+
+test("적극매수 기준 개수를 올리면 같은 후보지의 의견이 매수로 바뀐다", async () => {
+  stubRoutes(locationRoutes({ status: 200, body: locationBody }));
+  await openLocationCandidate();
+  fireEvent.click(screen.getByRole("button", { name: /위치 정보 가져오기/ }));
+  await screen.findByText("서울반포초등학교 · 350m");
+  expect(screen.getAllByText("적극매수").length).toBeGreaterThan(0);
+
+  type(/^등급 · 적극매수 기준/, "9");
+
+  expect(screen.queryByText("적극매수")).not.toBeInTheDocument();
+  expect(screen.getAllByText("매수").length).toBeGreaterThan(0);
 });

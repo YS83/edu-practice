@@ -61,9 +61,12 @@ import { areaGroup, summarizeTrades } from "@/lib/trades";
 import type { Trade } from "@/lib/trades";
 import { seoulDistricts } from "@/lib/trades/districts";
 
+import type { LocationResult } from "@/lib/location";
+
 import { ComplexInfoPanel } from "./complex-info";
 import { CriteriaCard } from "./criteria-card";
 import { candidateFacts } from "./facts";
+import { LocationPanel } from "./location-panel";
 import { OpinionBadge, OpinionPanel } from "./opinion";
 
 const bindingLabels: Record<BindingConstraint, string> = {
@@ -197,6 +200,8 @@ function TrackerBody({
 }) {
   const [candidates, setCandidates] = useState<Candidate[]>(initial);
   const [criteriaForm, setCriteriaForm] = useState<CriteriaForm>(initialCriteria);
+  // 위치 조회 결과는 저장하지 않고 화면에만 둔다(카카오가 결과 저장을 허용하지 않는다).
+  const [locations, setLocations] = useState<Record<string, LocationResult>>({});
 
   useEffect(() => {
     if (!persist) return;
@@ -236,11 +241,15 @@ function TrackerBody({
         const result =
           priced && basis ? evaluatePrice(input, basis, priced.price) : null;
         const recommendation = criteria
-          ? evaluateRecommendation(candidateFacts(candidate, result), criteria, new Date())
+          ? evaluateRecommendation(
+              candidateFacts(candidate, result, locations[candidate.id]),
+              criteria,
+              new Date()
+            )
           : null;
         return { candidate, priced, result, recommendation };
       }),
-    [candidates, input, basis, criteria]
+    [candidates, input, basis, criteria, locations]
   );
 
   const calculationReady =
@@ -360,6 +369,10 @@ function TrackerBody({
               result={result}
               recommendation={recommendation}
               criteria={criteria}
+              location={locations[candidate.id]}
+              onLocation={(location) =>
+                setLocations((current) => ({ ...current, [candidate.id]: location }))
+              }
               onChange={(patch) => update(candidate.id, patch)}
               onDelete={() =>
                 setCandidates((current) =>
@@ -623,6 +636,8 @@ function CandidateCard({
   result,
   recommendation,
   criteria,
+  location,
+  onLocation,
   onChange,
   onDelete,
 }: {
@@ -631,6 +646,8 @@ function CandidateCard({
   result: ReturnType<typeof evaluatePrice> | null;
   recommendation: ReturnType<typeof evaluateRecommendation> | null;
   criteria: ReturnType<typeof toCriteria>;
+  location: LocationResult | undefined;
+  onLocation: (location: LocationResult) => void;
   onChange: (patch: Partial<Candidate>) => void;
   onDelete: () => void;
 }) {
@@ -762,6 +779,8 @@ function CandidateCard({
             구매력 입력이 있고 가격이 정해지면 여기에서 비교 결과를 보여줍니다.
           </p>
         )}
+
+        <LocationPanel candidate={candidate} location={location} onLocation={onLocation} />
 
         {recommendation && criteria ? (
           <OpinionPanel recommendation={recommendation} criteria={criteria} />

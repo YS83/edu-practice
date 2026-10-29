@@ -17,7 +17,7 @@ const fields: {
   key: keyof CriteriaForm;
   label: string;
   unit: string;
-  group: "필수" | "선호";
+  group: "필수" | "선호" | "등급";
   description?: string;
 }[] = [
   { key: "minHouseholds", label: "세대수 최소", unit: "세대", group: "필수" },
@@ -31,6 +31,39 @@ const fields: {
     unit: "대 이상",
     group: "선호",
     description: "지상과 지하를 합친 값 기준입니다.",
+  },
+  {
+    key: "elementaryMax",
+    label: "초등학교까지",
+    unit: "m 이내",
+    group: "선호",
+    description: "지도상 직선거리 기준입니다. 도보 10분은 약 800m입니다.",
+  },
+  { key: "middleMax", label: "중학교까지", unit: "m 이내", group: "선호" },
+  { key: "stationMax", label: "지하철역까지", unit: "m 이내", group: "선호" },
+  {
+    key: "academyMin",
+    label: "주변 학원 수",
+    unit: "개 이상",
+    group: "선호",
+    description: "반경 800m 안의 학원입니다.",
+  },
+];
+
+const gradeFields: typeof fields = [
+  {
+    key: "strongMin",
+    label: "적극매수 기준",
+    unit: "개 이상 충족",
+    group: "등급",
+    description: "충족한 선호 조건이 이 개수 이상이면 적극매수입니다.",
+  },
+  {
+    key: "buyMin",
+    label: "매수 기준",
+    unit: "개 이상 충족",
+    group: "등급",
+    description: "이 개수 이상이면 매수, 그보다 적으면 중립입니다.",
   },
 ];
 
@@ -53,13 +86,13 @@ export function CriteriaCard({
       <CardHeader>
         <CardTitle>매수 의견 기준</CardTitle>
         <CardDescription>
-          필수 조건(구매력, 세대수 최소)을 모두 지키면 선호 조건 충족 개수로 의견을 정합니다. 3개 이상이면 적극매수, 1~2개면 매수, 0개면 중립입니다.
+          필수 조건(구매력, 세대수 최소)을 모두 지키면 충족한 선호 조건의 개수로 의견을 정합니다. 기본은 3개 이상이면 적극매수, 1~2개면 매수, 0개면 중립이고, 선호 조건이 8개이므로 아래에서 개수 기준을 고칠 수 있습니다.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <FieldGroup>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {fields.map((field) => (
+            {[...fields, ...gradeFields].map((field) => (
               <Field key={field.key}>
                 <FieldLabel htmlFor={`criteria-${field.key}`}>
                   {field.group} · {field.label}{" "}

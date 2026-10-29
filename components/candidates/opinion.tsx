@@ -8,6 +8,9 @@ import type {
   Recommendation,
 } from "@/lib/recommendation";
 
+// 학원 수를 세는 반경(m). 서버의 조회 반경과 같다.
+export const ACADEMY_RADIUS = 800;
+
 export const DISCLAIMER =
   "투자는 개인 판단에 따른 것이며, 서비스는 투자로 인한 피해에 책임지지 않습니다.";
 
@@ -42,6 +45,14 @@ function labelOf(key: CheckKey, criteria: Criteria): string {
       return `준공 ${criteria.builtWithinYears}년 이내`;
     case "parking":
       return `주차 세대당 ${criteria.parkingPerHousehold}대 이상`;
+    case "elementary":
+      return `초등학교 ${criteria.elementaryMax}m 이내`;
+    case "middle":
+      return `중학교 ${criteria.middleMax}m 이내`;
+    case "station":
+      return `지하철역 ${criteria.stationMax}m 이내`;
+    case "academy":
+      return `학원 ${criteria.academyMin}개 이상 (반경 ${ACADEMY_RADIUS}m)`;
   }
 }
 
@@ -53,6 +64,11 @@ export function OpinionPanel({
   criteria: Criteria;
 }) {
   const { opinion, checks } = recommendation;
+  const locationUnknown = checks.some(
+    (check) =>
+      ["elementary", "middle", "station", "academy"].includes(check.key) &&
+      check.status === "unknown"
+  );
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -88,7 +104,10 @@ export function OpinionPanel({
         ))}
       </ul>
       <p className="text-xs text-muted-foreground">
-        이 의견은 시세 전망이 아니라 내가 정한 기준에 얼마나 맞는지를 나타냅니다. 학교, 역세권, 학원가 같은 위치 기준은 아직 반영되지 않았습니다.
+        이 의견은 시세 전망이 아니라 내가 정한 기준에 얼마나 맞는지를 나타냅니다.
+        {locationUnknown
+          ? " 학교, 지하철역, 학원 같은 위치 기준은 위치 정보를 가져오면 반영됩니다."
+          : ""}
       </p>
       <p className="text-xs text-muted-foreground">{DISCLAIMER}</p>
     </div>
