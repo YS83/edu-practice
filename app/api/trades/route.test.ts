@@ -93,5 +93,19 @@ test("외부 API가 실패하면 upstream 오류를 돌려주고 인증키를 �
 
   expect(response.status).toBe(502);
   expect(JSON.parse(text).error).toBe("upstream");
+  // 포털이 알려 준 오류 코드와 메시지는 원인을 찾을 수 있게 그대로 전달한다.
+  expect(JSON.parse(text).detail).toBe("30 SERVICE KEY IS NOT REGISTERED ERROR.");
   expect(text).not.toContain("test-key");
+});
+
+test("인증키를 디코딩할 수 없으면 bad-key를 돌려주고 외부 API를 부르지 않는다", async () => {
+  vi.stubEnv("DATA_GO_KR_API_KEY", "abc%E0%A4%A");
+  const fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+
+  const response = await GET(request("district=11650&name=퍼스티지"));
+
+  expect(response.status).toBe(503);
+  expect(await response.json()).toEqual({ error: "bad-key" });
+  expect(fetchMock).not.toHaveBeenCalled();
 });
