@@ -391,10 +391,10 @@ test("자동 부대비용을 켜 두면 후보지의 필요한 대출액에 그 
 });
 
 const locationBody = {
-  place: { name: "래미안퍼스티지", address: "서울 서초구 반포동 1-1" },
-  elementary: { name: "서울반포초등학교", distance: 350 },
-  middle: { name: "반포중학교", distance: 600 },
-  station: { name: "고속터미널역 7호선", distance: 410 },
+  place: { name: "래미안퍼스티지", address: "서울 서초구 반포동 1-1", lat: 37.5, lng: 127.0 },
+  elementary: { name: "서울반포초등학교", distance: 350, lat: 37.51, lng: 127.01 },
+  middle: { name: "반포중학교", distance: 600, lat: 37.49, lng: 127.02 },
+  station: { name: "고속터미널역 7호선", distance: 410, lat: 37.505, lng: 126.99 },
   academies: { count: 12, capped: false, radius: 800 },
 };
 
@@ -501,4 +501,19 @@ test("적극매수 기준 개수를 올리면 같은 후보지의 의견이 매�
 
   expect(screen.queryByText("적극매수")).not.toBeInTheDocument();
   expect(screen.getAllByText("매수").length).toBeGreaterThan(0);
+});
+
+test("위치 정보를 가져온 뒤에만 지도 영역이 나타나고 카카오맵 링크에 단지 좌표가 담긴다", async () => {
+  stubRoutes(locationRoutes({ status: 200, body: locationBody }));
+  await openLocationCandidate();
+  expect(screen.queryByRole("link", { name: /카카오맵에서 크게 보기/ })).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: /위치 정보 가져오기/ }));
+
+  const link = await screen.findByRole("link", { name: /카카오맵에서 크게 보기/ });
+  expect(link).toHaveAttribute("href", expect.stringContaining(",37.5,127"));
+  // 이 테스트 환경에는 JavaScript 키가 없어 지도 대신 설정 안내가 보인다.
+  expect(screen.getByText(/NEXT_PUBLIC_KAKAO_JS_KEY/)).toBeInTheDocument();
+  // 좌표는 저장하지 않는다.
+  expect(JSON.stringify({ ...window.localStorage })).not.toContain("37.5");
 });

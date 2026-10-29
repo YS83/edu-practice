@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import type { Candidate } from "@/lib/candidates";
 import type { LocationResult, Nearest } from "@/lib/location";
 
+import { LocationMap } from "./location-map";
+
 type State =
   | { phase: "idle" }
   | { phase: "loading" }
@@ -113,6 +115,7 @@ export function LocationPanel({
               </dd>
             </div>
           </dl>
+          <LocationMap location={location} />
         </>
       ) : (
         <p className="text-sm text-muted-foreground">
