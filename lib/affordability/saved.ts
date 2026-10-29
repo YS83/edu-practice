@@ -68,16 +68,21 @@ function toNumber(text: string): number {
   return text.trim() === "" ? Number.NaN : Number(text);
 }
 
+// 매도 확보 현금, 기존 대출, 부대비용처럼 "없으면 0"인 칸은 비어 있어도 0으로 본다.
+function toNumberOrZero(text: string): number {
+  return text.trim() === "" ? 0 : Number(text);
+}
+
 export function toInput(form: FormState): AffordabilityInput {
   return {
     cash: toNumber(form.cash),
-    saleProceeds: toNumber(form.saleProceeds),
+    saleProceeds: toNumberOrZero(form.saleProceeds),
     ownershipStatus: form.ownershipStatus,
     annualIncome: toNumber(form.annualIncome),
     monthlyTakeHome: toNumber(form.monthlyTakeHome),
-    existingAnnualDebtService: toNumber(form.existingAnnualDebtService),
-    existingMonthlyDebtService: toNumber(form.existingMonthlyDebtService),
-    acquisitionCosts: toNumber(form.acquisitionCosts),
+    existingAnnualDebtService: toNumberOrZero(form.existingAnnualDebtService),
+    existingMonthlyDebtService: toNumberOrZero(form.existingMonthlyDebtService),
+    acquisitionCosts: toNumberOrZero(form.acquisitionCosts),
     rate: toNumber(form.rate),
     termYears: toNumber(form.termYears),
     repayment: form.repayment,
