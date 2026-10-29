@@ -16,7 +16,10 @@ test("필수 입력이 비어 있으면 결과 대신 채워야 할 항목을 �
   render(<Home />);
 
   expect(
-    screen.getByRole("heading", { level: 1, name: /살 수 있는 가격/ })
+    screen.getByRole("heading", { level: 1, name: "입성각" })
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText("서울 입성, 내 형편으로 각이 나올까?")
   ).toBeInTheDocument();
   expect(screen.getByText("입력을 확인해 주세요")).toBeInTheDocument();
   expect(

@@ -19,9 +19,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "서울 입성 구매력 계산",
+  title: "입성각",
   description:
-    "자산, 소득, 대출 조건으로 서울에서 살 수 있는 최대 가격과 월 상환 부담을 계산합니다.",
+    "서울 입성, 내 형편으로 각이 나올까? 자산, 소득, 대출 조건으로 살 수 있는 최대 가격과 월 상환 부담을 계산합니다.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

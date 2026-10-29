@@ -9,8 +9,11 @@ export function SiteNav() {
   return (
     <nav
       aria-label="주요 메뉴"
-      className="mx-auto flex w-full max-w-6xl gap-4 px-4 pt-4 text-sm sm:px-6"
+      className="mx-auto flex w-full max-w-6xl items-center gap-4 px-4 pt-4 text-sm sm:px-6"
     >
+      <Link href="/" className="mr-2 font-heading text-base font-semibold">
+        입성각
+      </Link>
       {links.map((link) => (
         <Link
           key={link.href}

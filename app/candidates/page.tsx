@@ -1,7 +1,7 @@
 import { CandidateTracker } from "@/components/candidates/tracker";
 
 export const metadata = {
-  title: "후보지 | 서울 입성 구매력 계산",
+  title: "후보지 | 입성각",
 };
 
 export default function CandidatesPage() {
