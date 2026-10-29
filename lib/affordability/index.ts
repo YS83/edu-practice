@@ -65,11 +65,7 @@ export function calculateAffordability(
   input: AffordabilityInput,
   policy: PolicyBasis
 ): AffordabilityResult {
-  const invalid = numericFields.filter((field) => {
-    const value = input[field];
-    if (!Number.isFinite(value)) return true;
-    return field === "termYears" ? value <= 0 : value < 0;
-  });
+  const invalid = invalidFields(input);
   if (invalid.length > 0) return { status: "invalid", fields: invalid };
 
   const equity = input.cash + input.saleProceeds - input.acquisitionCosts;
@@ -158,4 +154,68 @@ function dsrLoanLimit(input: AffordabilityInput, policy: PolicyBasis) {
       ? months
       : (1 - Math.pow(1 + monthlyRate, -months)) / monthlyRate;
   return (annualAllowance / 12) * annuityFactor;
+}
+
+function invalidFields(input: AffordabilityInput): NumericField[] {
+  return numericFields.filter((field) => {
+    const value = input[field];
+    if (!Number.isFinite(value)) return true;
+    return field === "termYears" ? value <= 0 : value < 0;
+  });
+}
+
+export type PriceEvaluation =
+  | {
+      status: "ok";
+      affordable: boolean;
+      // 그 가격을 사는 데 필요한 대출액과 그 가격에서의 대출 한도.
+      loan: number;
+      loanLimit: number;
+      // 필요한 대출액이 한도를 넘는 만큼. 살 수 있으면 0이다.
+      shortfall: number;
+      binding: BindingConstraint;
+      monthlyPayment: number;
+      netMonthlyIncome: number;
+    }
+  | { status: "invalid"; fields: NumericField[] };
+
+// 주어진 가격의 집을 지금 조건으로 살 수 있는지 본다. 한도 규칙은 calculateAffordability와 같다.
+export function evaluatePrice(
+  input: AffordabilityInput,
+  policy: PolicyBasis,
+  price: number
+): PriceEvaluation {
+  const invalid = invalidFields(input);
+  if (invalid.length > 0 || !Number.isFinite(price) || price < 0) {
+    return { status: "invalid", fields: invalid };
+  }
+
+  const equity = input.cash + input.saleProceeds - input.acquisitionCosts;
+  const ltv =
+    (input.ownershipStatus === "additional"
+      ? policy.ltvAdditional
+      : policy.ltvDisposal) / 100;
+  const tier =
+    policy.priceCaps.find((candidate) => candidate.upTo === null || price <= candidate.upTo) ??
+    policy.priceCaps[policy.priceCaps.length - 1];
+
+  const limits: [BindingConstraint, number][] = [
+    ["ltv", ltv * price],
+    ["cap", tier.cap],
+    ["dsr", dsrLoanLimit(input, policy)],
+  ];
+  const [binding, loanLimit] = limits.reduce((lowest, next) =>
+    next[1] < lowest[1] - 1e-9 ? next : lowest
+  );
+  const loan = Math.max(0, price - equity);
+  const shortfall = Math.max(0, loan - loanLimit);
+  return {
+    status: "ok",
+    affordable: shortfall === 0,
+    loan,
+    loanLimit,
+    shortfall,
+    binding,
+    ...repaymentOf(loan, input),
+  };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { calculateAffordability } from "@/lib/affordability";
+import { calculateAffordability, evaluatePrice } from "@/lib/affordability";
 import type { AffordabilityInput, PolicyBasis } from "@/lib/affordability";
 
 // 금액 단위는 만원이다.
@@ -191,5 +191,78 @@ describe("calculateAffordability", () => {
     expect(stuck.maxPrice).toBeCloseTo(150000, 1);
     expect(crossed.maxPrice).toBeCloseTo(160000, 1);
     expect(crossed.loan).toBeCloseTo(40000, 1);
+  });
+});
+
+describe("evaluatePrice", () => {
+  const tiered: PolicyBasis = {
+    ...ltvOnlyPolicy,
+    ltvDisposal: 70,
+    priceCaps: [
+      { upTo: 150000, cap: 60000 },
+      { upTo: 250000, cap: 40000 },
+      { upTo: null, cap: 20000 },
+    ],
+  };
+
+  test("가격이 구매력 안이면 필요한 대출액과 한도, 월 상환액, 실질 소득을 돌려준다", () => {
+    // 현금 5억, LTV 40%: 8억 집은 대출 3억이 필요하고 한도는 3억 2,000만원이다.
+    const result = evaluatePrice(baseInput, ltvOnlyPolicy, 80000);
+
+    if (result.status !== "ok") throw new Error("ok 결과가 아니다");
+    expect(result.affordable).toBe(true);
+    expect(result.loan).toBeCloseTo(30000, 1);
+    expect(result.loanLimit).toBeCloseTo(32000, 1);
+    expect(result.shortfall).toBe(0);
+    expect(result.binding).toBe("ltv");
+    expect(result.monthlyPayment).toBeGreaterThan(0);
+  });
+
+  test("가격이 구매력을 넘으면 부족액을 돌려준다", () => {
+    // 9억 집은 대출 4억이 필요한데 한도는 3억 6,000만원이다.
+    const result = evaluatePrice(baseInput, ltvOnlyPolicy, 90000);
+
+    if (result.status !== "ok") throw new Error("ok 결과가 아니다");
+    expect(result.affordable).toBe(false);
+    expect(result.loan).toBeCloseTo(40000, 1);
+    expect(result.loanLimit).toBeCloseTo(36000, 1);
+    expect(result.shortfall).toBeCloseTo(4000, 1);
+  });
+
+  test("현금이 가격보다 많으면 대출이 필요 없다", () => {
+    const result = evaluatePrice(baseInput, ltvOnlyPolicy, 30000);
+
+    if (result.status !== "ok") throw new Error("ok 결과가 아니다");
+    expect(result.affordable).toBe(true);
+    expect(result.loan).toBe(0);
+    expect(result.monthlyPayment).toBe(0);
+  });
+
+  test("가격 구간에 따라 한도 캡이 바뀌고, 최대 구매 가격에서의 한도는 구매력 계산과 같다", () => {
+    const calculated = calculateAffordability({ ...baseInput, cash: 120000 }, tiered);
+    if (calculated.status !== "ok") throw new Error("ok 결과가 아니다");
+
+    const atMax = evaluatePrice({ ...baseInput, cash: 120000 }, tiered, calculated.maxPrice);
+    if (atMax.status !== "ok") throw new Error("ok 결과가 아니다");
+    expect(atMax.loanLimit).toBeCloseTo(calculated.loanLimit, 1);
+    expect(atMax.binding).toBe(calculated.binding);
+
+    // 15억 이하는 캡 6억, 15억 초과는 캡 4억이다.
+    const below = evaluatePrice({ ...baseInput, cash: 120000 }, tiered, 150000);
+    const above = evaluatePrice({ ...baseInput, cash: 120000 }, tiered, 150001);
+    if (below.status !== "ok" || above.status !== "ok")
+      throw new Error("ok 결과가 아니다");
+    expect(below.loanLimit).toBeCloseTo(60000, 1);
+    expect(above.loanLimit).toBeCloseTo(40000, 1);
+  });
+
+  test("입력이 잘못됐거나 가격이 숫자가 아니면 invalid를 돌려준다", () => {
+    expect(
+      evaluatePrice({ ...baseInput, cash: Number.NaN }, ltvOnlyPolicy, 80000)
+    ).toEqual({ status: "invalid", fields: ["cash"] });
+    expect(evaluatePrice(baseInput, ltvOnlyPolicy, Number.NaN)).toEqual({
+      status: "invalid",
+      fields: [],
+    });
   });
 });
