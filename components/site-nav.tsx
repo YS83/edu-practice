@@ -1,4 +1,10 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+import { Logo } from "@/components/logo";
+import { cn } from "@/lib/utils";
 
 const links = [
   { href: "/", label: "구매력 계산" },
@@ -6,23 +12,38 @@ const links = [
 ];
 
 export function SiteNav() {
+  const pathname = usePathname();
   return (
-    <nav
-      aria-label="주요 메뉴"
-      className="mx-auto flex w-full max-w-6xl items-center gap-4 px-4 pt-4 text-sm sm:px-6"
-    >
-      <Link href="/" className="mr-2 font-heading text-base font-semibold">
-        입성각
-      </Link>
-      {links.map((link) => (
-        <Link
-          key={link.href}
-          href={link.href}
-          className="font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-        >
-          {link.label}
+    <header className="sticky top-0 z-20 border-b bg-background/85 backdrop-blur">
+      <nav
+        aria-label="주요 메뉴"
+        className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6"
+      >
+        <Link href="/" aria-label="입성각 홈">
+          <Logo />
         </Link>
-      ))}
-    </nav>
+        <ul className="flex items-center gap-1 text-sm">
+          {links.map((link) => {
+            const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+            return (
+              <li key={link.href}>
+                <Link
+                  href={link.href}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "rounded-full px-3 py-1.5 font-medium transition-colors",
+                    active
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  {link.label}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+    </header>
   );
 }
