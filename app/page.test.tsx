@@ -1,8 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { beforeEach, expect, test } from "vitest";
 
 import Home from "@/app/page";
+import { defaultPolicyId } from "@/lib/affordability/policies";
+import { initialForm, policyFormFor, STORAGE_KEY } from "@/lib/affordability/saved";
+import { CANDIDATES_KEY } from "@/lib/candidates";
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -72,4 +75,105 @@ test("입력한 값은 다시 열어도 유지된다", async () => {
   render(<Home />);
 
   expect(await screen.findByDisplayValue("50000")).toBeInTheDocument();
+});
+
+function fillRequired() {
+  type(/^현금 자산/, "50000");
+  type(/^연 소득/, "10000");
+  type(/^월 실수령 소득/, "800");
+}
+
+test("없으면 0인 비용과 대출 칸이 비어 있어도 결과를 계산한다", () => {
+  render(<Home />);
+  fillRequired();
+
+  type(/^기타 비용/, "");
+  type(/^주택 매도 확보 현금/, "");
+  type(/^기존 대출 연 원리금 상환액/, "");
+  type(/^기존 대출 월 상환액/, "");
+
+  expect(screen.queryByText("입력을 확인해 주세요")).not.toBeInTheDocument();
+  expect(screen.getAllByText("7억 9,457만 원").length).toBeGreaterThan(0);
+
+  // 자동 계산을 끄고 부대비용 칸이 비어 있어도 0으로 보고 계산한다.
+  fireEvent.click(screen.getByRole("radio", { name: /직접 입력만 사용/ }));
+  type(/^부대비용/, "");
+  expect(screen.queryByText("입력을 확인해 주세요")).not.toBeInTheDocument();
+  expect(screen.getAllByText("8억 3,333만 원").length).toBeGreaterThan(0);
+});
+
+test("필수 칸이 비었을 때는 그 항목만 알리고 상환 기간 문구는 붙이지 않는다", () => {
+  render(<Home />);
+  fillRequired();
+
+  type(/^현금 자산/, "");
+
+  expect(screen.getByText(/현금 자산 항목을 0 이상의 숫자로 채워 주세요\.$/)).toBeInTheDocument();
+  expect(screen.queryByText(/상환 기간은 0보다 커야/)).not.toBeInTheDocument();
+});
+
+test("상환 기간이 문제일 때만 상환 기간 안내가 붙는다", () => {
+  render(<Home />);
+  fillRequired();
+
+  type(/^상환 기간/, "0");
+
+  expect(screen.getByText(/상환 기간 항목을 0 이상의 숫자로 채워 주세요\. 상환 기간은 0보다 커야 합니다\./)).toBeInTheDocument();
+});
+
+// 후보지를 저장소에 넣어 둔다. 9억 5천만원 집이다.
+function seedForCandidatePick() {
+  window.localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      form: { ...initialForm, cash: "70000", annualIncome: "10000", monthlyTakeHome: "800" },
+      policy: policyFormFor(defaultPolicyId),
+    })
+  );
+  window.localStorage.setItem(
+    CANDIDATES_KEY,
+    JSON.stringify([
+      {
+        id: "c1",
+        district: "11650",
+        complex: "반포자이",
+        dong: "",
+        area: 85,
+        market: { price: 95000, date: null, min: null, max: null, count: 0, fetchedAt: null, source: "manual" },
+        listing: "",
+        households: "",
+        builtYear: "",
+        parkingGround: "",
+        parkingUnderground: "",
+        info: null,
+        notes: [],
+      },
+    ])
+  );
+}
+
+test("후보지를 고르면 그 후보지 가격 기준으로 부대비용과 대출을 보여준다", async () => {
+  seedForCandidatePick();
+  render(<Home />);
+
+  fireEvent.click(await screen.findByRole("combobox", { name: /후보지로 계산/ }));
+  fireEvent.click(await screen.findByRole("option", { name: /반포자이/ }));
+
+  const section = screen.getByRole("region", { name: /후보지 기준 계산/ });
+  // 9억 5천만원: 취득세와 교육세 3,135만원 + 중개보수 475만원 = 3,610만원
+  expect(within(section).getByText(/9억 5,000만 원/)).toBeInTheDocument();
+  expect(within(section).getByText("취득세 등 3,135만 원")).toBeInTheDocument();
+  expect(within(section).getByText("중개보수 475만 원")).toBeInTheDocument();
+  expect(within(section).getByText("부대비용 합계 3,610만 원")).toBeInTheDocument();
+  // 현금 7억을 쓰고 부족한 2억 8,610만원이 대출이다. 한도는 LTV 40%인 3억 8,000만원이라 살 수 있다.
+  expect(within(section).getByText(/필요한 대출액 2억 8,610만 원/)).toBeInTheDocument();
+  expect(within(section).getByText("가능")).toBeInTheDocument();
+});
+
+test("등록한 후보지가 없으면 후보지로 계산 대신 등록 안내를 보여 준다", async () => {
+  render(<Home />);
+  fillRequired();
+
+  expect(await screen.findByText(/등록한 후보지가 없습니다/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /후보지 등록하러 가기/ })).toHaveAttribute("href", "/candidates");
 });

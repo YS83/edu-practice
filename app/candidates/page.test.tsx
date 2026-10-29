@@ -705,3 +705,24 @@ test("거래 결과가 없으면 위치 지도를 부르지 않는다", async ()
   expect(await screen.findByText("일치하는 거래가 없습니다")).toBeInTheDocument();
   expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith("/api/places"))).toBe(false);
 });
+
+test("비교 표와 접은 카드 요약에 후보지 가격 기준의 부대비용이 보인다", async () => {
+  seedCandidates(["반포자이"]);
+  // 현금 7억, 부대비용 자동 계산을 켠 상태로 바꾼다. 9억 5천만원이면 부대비용은 3,610만원이다.
+  window.localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      form: { ...initialForm, cash: "70000", annualIncome: "10000", monthlyTakeHome: "800", autoCosts: true },
+      policy: policyFormFor(defaultPolicyId),
+    })
+  );
+  render(<CandidatesPage />);
+
+  const table = await screen.findByRole("table");
+  expect(within(table).getByRole("columnheader", { name: "부대비용" })).toBeInTheDocument();
+  expect(within(table).getByText("3,610만 원")).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "접기" }));
+
+  expect(screen.getByText(/부대비용 3,610만 원/)).toBeInTheDocument();
+});

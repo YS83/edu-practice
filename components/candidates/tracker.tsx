@@ -329,6 +329,7 @@ function TrackerBody({
                       <TableHead className="text-right">최근 실거래가</TableHead>
                       <TableHead>살 수 있나</TableHead>
                       <TableHead>매수 의견</TableHead>
+                      <TableHead className="text-right">부대비용</TableHead>
                       <TableHead className="text-right">월 상환액</TableHead>
                       <TableHead className="text-right">실질 소득(월)</TableHead>
                     </TableRow>
@@ -363,6 +364,9 @@ function TrackerBody({
                           ) : (
                             "-"
                           )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {result?.status === "ok" ? formatMan(result.costs.total) : "-"}
                         </TableCell>
                         <TableCell className="text-right">
                           {result?.status === "ok" ? formatMan(result.monthlyPayment) : "-"}
@@ -816,6 +820,9 @@ function CandidateCard({
               </Badge>
             ) : null}
             {recommendation ? <OpinionBadge opinion={recommendation.opinion} /> : null}
+            {result?.status === "ok" ? (
+              <span className="text-muted-foreground">부대비용 {formatMan(result.costs.total)}</span>
+            ) : null}
           </div>
         </CardContent>
       ) : (

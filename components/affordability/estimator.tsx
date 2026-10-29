@@ -47,6 +47,10 @@ import {
 } from "@/lib/affordability/saved";
 import type { FormState, PolicyForm, Saved } from "@/lib/affordability/saved";
 
+import { parseCandidates, CANDIDATES_KEY } from "@/lib/candidates";
+import type { Candidate } from "@/lib/candidates";
+
+import { CandidatePick } from "./candidate-pick";
 import { formatMan } from "./format";
 
 
@@ -129,21 +133,37 @@ function Stat({
 // 브라우저에서 저장값을 읽는 순간 한 번만 그 값으로 다시 시작한다.
 export function AffordabilityEstimator() {
   const raw = useSyncExternalStore(subscribeNothing, readSaved, () => undefined);
+  const candidatesRaw = useSyncExternalStore(
+    subscribeNothing,
+    readCandidatesRaw,
+    () => undefined
+  );
   return (
     <EstimatorForm
       key={raw === undefined ? "server" : "browser"}
       initial={parseSaved(raw)}
+      candidates={parseCandidates(candidatesRaw)}
       // 서버용 첫 렌더는 기본값이므로, 저장된 값을 덮어쓰지 않게 저장하지 않는다.
       persist={raw !== undefined}
     />
   );
 }
 
+function readCandidatesRaw(): string | null {
+  try {
+    return window.localStorage.getItem(CANDIDATES_KEY);
+  } catch {
+    return null;
+  }
+}
+
 function EstimatorForm({
   initial,
+  candidates,
   persist,
 }: {
   initial: Saved;
+  candidates: Candidate[];
   persist: boolean;
 }) {
   const [form, setForm] = useState<FormState>(initial.form);
@@ -479,7 +499,8 @@ function EstimatorForm({
         </Card>
       </div>
 
-      <Card className="lg:sticky lg:top-6" aria-live="polite">
+      <div className="flex flex-col gap-6 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
+      <Card aria-live="polite">
         <CardHeader>
           <CardTitle>계산 결과</CardTitle>
           <CardDescription>
@@ -500,9 +521,9 @@ function EstimatorForm({
               <AlertCircleIcon />
               <AlertTitle>입력을 확인해 주세요</AlertTitle>
               <AlertDescription>
-                {result.fields.map((field) => fieldLabels[field]).join(", ")}
-                {" "}
-                항목을 0 이상의 숫자로 채워 주세요. 상환 기간은 0보다 커야 합니다.
+                {result.fields.map((field) => fieldLabels[field]).join(", ")} 항목을 0 이상의 숫자로
+                채워 주세요.
+                {result.fields.includes("termYears") ? " 상환 기간은 0보다 커야 합니다." : ""}
               </AlertDescription>
             </Alert>
           ) : result.status === "unaffordable" ? (
@@ -557,6 +578,8 @@ function EstimatorForm({
           </p>
         </CardContent>
       </Card>
+      <CandidatePick input={toInput(form)} basis={basis} candidates={candidates} />
+      </div>
 
       {/* 좁은 화면에서는 결과 카드가 맨 아래라서, 입력하는 동안 핵심 숫자를 고정해 보여준다. */}
       {result?.status === "ok" ? (
